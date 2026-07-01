@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutGrid,
   CalendarDays,
@@ -12,11 +12,24 @@ import {
   Building2,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/hooks/useUser";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
@@ -67,6 +80,10 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user } = useUser();
+  const staffName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
+  const staffInitials = staffName.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase();
+  const staffRole = user?.role ? user.role.replace(/^\w/, (letter: string) => letter.toUpperCase()) : "Staff";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -132,15 +149,16 @@ export function AppShell({
           )}
           <div className={cn("flex items-center gap-3 rounded-lg p-2 hover:bg-muted/60", collapsed && "justify-center")}>
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-sky-400 text-xs font-bold text-primary-foreground">
-              JW
+              {staffInitials}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-foreground">Jenny Wilson</div>
-                <div className="truncate text-xs text-muted-foreground">Receptionist</div>
+                <div className="truncate text-sm font-semibold text-foreground">{staffName}</div>
+                <div className="truncate text-xs text-muted-foreground">{staffRole}</div>
               </div>
             )}
           </div>
+          <LogoutConfirmButton collapsed={collapsed} />
         </div>
       </aside>
 
@@ -177,6 +195,7 @@ export function AppShell({
           <Button variant="ghost" size="icon" className="rounded-full">
             <SettingsIcon className="h-4 w-4" />
           </Button>
+          <LogoutConfirmButton iconOnly />
         </header>
 
         <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8 animate-in fade-in duration-300">
@@ -184,6 +203,53 @@ export function AppShell({
         </main>
       </div>
     </div>
+  );
+}
+
+export function LogoutConfirmButton({ collapsed, iconOnly }: { collapsed?: boolean; iconOnly?: boolean }) {
+  const navigate = useNavigate();
+  const { logout } = useUser();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      navigate({ to: "/login" });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        {iconOnly || collapsed ? (
+          <Button variant="ghost" size="icon" className={cn("rounded-full text-muted-foreground hover:text-destructive", collapsed && "mt-2")} aria-label="Log out">
+            <LogOut className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" className="mt-2 w-full justify-start gap-3 text-muted-foreground hover:text-destructive">
+            <LogOut className="h-4 w-4" />
+            Log out
+          </Button>
+        )}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Log out?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Your current session will end and you will need to sign in again to access the portal.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoggingOut}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleLogout} disabled={isLoggingOut} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            {isLoggingOut ? "Logging out..." : "Log out"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

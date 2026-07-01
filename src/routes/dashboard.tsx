@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Plus, UserPlus, CalendarCheck, Users, Stethoscope, CalendarRange, TrendingUp, Search } from "lucide-react";
 import { appointments } from "@/lib/mock-data";
+import { useUser } from "@/hooks/useUser";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — MediFlow" }] }),
@@ -47,6 +48,8 @@ function StatCard({
 }
 
 function Dashboard() {
+  const { user } = useUser();
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
   const docs: { name: string; count: string; tone: string }[] = [
     { name: "Dr. James Brown", count: "32 / 43", tone: "bg-amber-50 text-amber-700 ring-amber-200" },
     { name: "Dr. James Brown", count: "27 / 38", tone: "bg-rose-50 text-rose-700 ring-rose-200" },
@@ -57,7 +60,7 @@ function Dashboard() {
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Good morning, Jenny</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Good morning, {displayName}</h1>
         <p className="text-sm text-muted-foreground">Wednesday, June 10, 2026 — Here's what's happening today.</p>
       </div>
 

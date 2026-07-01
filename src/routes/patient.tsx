@@ -4,7 +4,8 @@ import { CalendarDays, LayoutGrid, Plus, Stethoscope, PanelLeftOpen, Bell, Setti
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Logo, Breadcrumbs } from "@/components/app-shell";
+import { Logo, Breadcrumbs, LogoutConfirmButton } from "@/components/app-shell";
+import { useUser } from "@/hooks/useUser";
 
 export const Route = createFileRoute("/patient")({
   component: PatientLayout,
@@ -24,6 +25,10 @@ function PatientLayout() {
 export function PatientShell({ children, breadcrumbs }: { children: ReactNode; breadcrumbs?: { label: string; to?: string }[] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user } = useUser();
+  const patientName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Patient";
+  const initials = patientName.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase();
+  const gender = user?.gender === "F" ? "Female" : user?.gender === "M" ? "Male" : "Patient";
   return (
     <div className="flex min-h-screen bg-background">
       <aside className={cn("fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-sidebar-border bg-sidebar transition-transform", mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0")}>
@@ -42,9 +47,10 @@ export function PatientShell({ children, breadcrumbs }: { children: ReactNode; b
         <div className="border-t border-sidebar-border p-3">
           <div className="mb-2 px-1 text-[10px] font-semibold tracking-[0.16em] text-muted-foreground">PATIENT PORTAL</div>
           <div className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/60">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-sky-400 text-xs font-bold text-primary-foreground">JJ</div>
-            <div><div className="text-sm font-semibold">Jacob Jones</div><div className="text-xs text-muted-foreground">Male</div></div>
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-sky-400 text-xs font-bold text-primary-foreground">{initials}</div>
+            <div><div className="text-sm font-semibold">{patientName}</div><div className="text-xs text-muted-foreground">{gender}</div></div>
           </div>
+          <LogoutConfirmButton />
         </div>
       </aside>
       {mobileOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMobileOpen(false)} />}
@@ -58,6 +64,7 @@ export function PatientShell({ children, breadcrumbs }: { children: ReactNode; b
           </div>
           <Button variant="ghost" size="icon" className="rounded-full"><Bell className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" className="rounded-full"><SettingsIcon className="h-4 w-4" /></Button>
+          <LogoutConfirmButton iconOnly />
         </header>
         <main className="flex-1 px-4 py-6 lg:px-8 lg:py-8 animate-in fade-in duration-300">{children}</main>
       </div>

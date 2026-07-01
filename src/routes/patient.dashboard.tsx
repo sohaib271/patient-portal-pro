@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/app-shell";
 import { Plus, CalendarCheck, Stethoscope } from "lucide-react";
+import { useUser } from "@/hooks/useUser";
 
 export const Route = createFileRoute("/patient/dashboard")({
   head: () => ({ meta: [{ title: "My Portal — MediFlow" }] }),
@@ -11,11 +12,19 @@ export const Route = createFileRoute("/patient/dashboard")({
 });
 
 function PatientDashboard() {
+  const { user } = useUser();
+  const patientName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Patient";
+
   return (
     <PatientShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Welcome back, Jacob</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Welcome back, {patientName}</h1>
         <p className="text-sm text-muted-foreground">Here is a summary of your health portal today.</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {user?.patientId && <span className="rounded-md border border-border px-2 py-1">Patient ID: {user.patientId}</span>}
+          {user?.age && <span className="rounded-md border border-border px-2 py-1">Age: {user.age}</span>}
+          {user?.city && <span className="rounded-md border border-border px-2 py-1">City: {user.city}</span>}
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-5 lg:col-span-2">

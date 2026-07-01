@@ -1,10 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
 import { Eye, EyeOff, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AuthService } from "@/services/authService";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Sign in — MediFlow" }] }),
@@ -13,7 +15,38 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [show, setShow] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const getErrorMessage = (err: unknown) => {
+    if (typeof err === "object" && err && "response" in err) {
+      const response = (err as { response?: { data?: { message?: string | string[] } } }).response;
+      const message = response?.data?.message;
+      return Array.isArray(message) ? message.join(", ") : message;
+    }
+    return undefined;
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      const user = await AuthService.login(email.trim(), password);
+      queryClient.setQueryData(["user"], user);
+      navigate({ to: user?.role === "patient" ? "/patient/dashboard" : "/dashboard" });
+    } catch (err) {
+      setError(getErrorMessage(err) ?? "Unable to sign in. Please check your email and password.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-sky-50 via-white to-sky-100 px-4">
       {/* Decorative DNA-like bg */}
@@ -43,21 +76,16 @@ function LoginPage() {
             <p className="text-sm text-muted-foreground">Sign in to your account</p>
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              navigate({ to: "/dashboard" });
-            }}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
             <div className="space-y-1.5">
               <Label htmlFor="email">Email address</Label>
-              <Input id="email" type="email" placeholder="you@clinic.com" defaultValue="jenny@clinic.com" />
+              <Input id="email" type="email" placeholder="you@clinic.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pwd">Password</Label>
               <div className="relative">
-                <Input id="pwd" type={show ? "text" : "password"} defaultValue="password" />
+                <Input id="pwd" type={show ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} required />
                 <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -69,7 +97,9 @@ function LoginPage() {
               </label>
               <a className="text-sm font-medium text-primary hover:underline" href="#">Forgot password?</a>
             </div>
-            <Button type="submit" className="w-full h-11 text-base font-semibold">Sign in</Button>
+            <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={isSubmitting}>
+              {isSubmitting ? "Signing in..." : "Sign in"}
+            </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
