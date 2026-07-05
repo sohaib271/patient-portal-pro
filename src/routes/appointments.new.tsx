@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, ArrowRight, Search, UserRound, CalendarCheck2, CheckCircle2, Bell, FileText, User as UserIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
-import { patients, specialties } from "@/lib/mock-data";
+import { specialties } from "@/lib/mock-data";
+import { Patient, type PatientRecord } from "@/services/patient.service";
 
 export const Route = createFileRoute("/appointments/new")({
   head: () => ({ meta: [{ title: "New Appointment — MediFlow" }] }),
@@ -17,18 +18,88 @@ export const Route = createFileRoute("/appointments/new")({
 });
 
 type Step = 1 | 2 | 3;
+type AppointmentPatient = PatientRecord & { phone: string };
 
 function NewAppointmentPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>(1);
-  const [selected, setSelected] = useState<(typeof patients)[number] | null>(null);
+  const [selected, setSelected] = useState<AppointmentPatient | null>(null);
   const [query, setQuery] = useState("");
+  const [found, setFound] = useState<AppointmentPatient[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isCreatingPatient, setIsCreatingPatient] = useState(false);
+  const [isRegisteringAnother, setIsRegisteringAnother] = useState(false);
+  const [patientError, setPatientError] = useState("");
+  const [newPatient, setNewPatient] = useState({ firstName: "", lastName: "", age: "", city: "", gender: "M", relation: "self" });
   const [specialty, setSpecialty] = useState("Cardiology");
   const [done, setDone] = useState(false);
 
-  const found = query ? patients.filter((p) => p.id.toLowerCase().includes(query.toLowerCase()) || p.name.toLowerCase().includes(query.toLowerCase())) : [];
-
   if (done) return <Confirmed onBack={() => navigate({ to: "/appointments" })} />;
+
+  const getErrorMessage = (err: unknown) => {
+    if (typeof err === "object" && err && "response" in err) {
+      const response = (err as { response?: { data?: { message?: string | string[] } } }).response;
+      const message = response?.data?.message;
+      return Array.isArray(message) ? message.join(", ") : message;
+    }
+    return undefined;
+  };
+
+  const handlePatientSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const phone = query.trim();
+    if (!phone) return;
+    setPatientError("");
+    setIsSearching(true);
+    setHasSearched(false);
+    setSelected(null);
+    setIsRegisteringAnother(false);
+
+    try {
+      const response = await Patient.searchByPhone(phone);
+      const patients = ((response.patients ?? []) as PatientRecord[]).map((patient) => ({
+        ...patient,
+        phone: response.contact?.phone ?? phone,
+      }));
+      setFound(patients);
+      setHasSearched(true);
+    } catch (err) {
+      setFound([]);
+      setPatientError(getErrorMessage(err) ?? "Unable to search patients by phone.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleCreatePatient = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const phone = query.trim();
+    setPatientError("");
+    setIsCreatingPatient(true);
+
+    try {
+      const response = await Patient.createPatientByPhone({
+        phone,
+        firstName: newPatient.firstName.trim(),
+        lastName: newPatient.lastName.trim(),
+        age: Number(newPatient.age),
+        city: newPatient.city.trim(),
+        gender: newPatient.gender,
+        relation: newPatient.relation.trim() || "self",
+      });
+      const patient = { ...response.patient, phone: response.contact?.phone ?? phone } as AppointmentPatient;
+      setSelected(patient);
+      setFound((current) => [patient, ...current.filter((item) => item._id !== patient._id)]);
+      setHasSearched(true);
+      setIsRegisteringAnother(false);
+      setNewPatient({ firstName: "", lastName: "", age: "", city: "", gender: "M", relation: "self" });
+    } catch (err) {
+      setPatientError(getErrorMessage(err) ?? "Unable to register patient.");
+    } finally {
+      setIsCreatingPatient(false);
+    }
+  };
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", to: "/dashboard" }, { label: "Appointments", to: "/appointments" }, { label: "New Appointment" }]}>
@@ -51,49 +122,111 @@ function NewAppointmentPage() {
                 <p className="text-sm text-muted-foreground">Select a patient and fill in the appointment details</p>
               </div>
               <div>
-                <Label htmlFor="search">Search Patient</Label>
-                <div className="mt-1.5 flex gap-2">
+                <Label htmlFor="search">Search Patient by Phone</Label>
+                <form onSubmit={handlePatientSearch} className="mt-1.5 flex gap-2">
                   <div className="relative flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="P-10051 or name" className="pl-9" />
+                    <Input id="search" type="tel" value={query} onChange={(e) => { setQuery(e.target.value); setSelected(null); setHasSearched(false); setFound([]); }} placeholder="03001234567" className="pl-9" />
                   </div>
-                  <Button>Search</Button>
-                </div>
+                  <Button type="submit" disabled={isSearching || !query.trim()}>{isSearching ? "Searching..." : "Search"}</Button>
+                </form>
               </div>
 
-              {query && found.length === 0 && (
+              {patientError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{patientError}</div>}
+
+              {hasSearched && found.length === 0 && (
                 <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center">
                   <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-rose-100 text-rose-600">
                     <Search className="h-5 w-5" />
                   </div>
                   <div className="font-semibold">Patient Not Found</div>
-                  <p className="mt-1 text-sm text-muted-foreground">No patient found with that ID. Register a new patient?</p>
-                  <Button asChild className="mt-3" size="sm"><Link to="/register">Register New Patient</Link></Button>
+                  <p className="mt-1 text-sm text-muted-foreground">No patient exists against this phone number. Register a patient to continue.</p>
                 </div>
+              )}
+              {hasSearched && found.length === 0 && (
+                <form onSubmit={handleCreatePatient} className="space-y-4 rounded-xl border border-border p-4">
+                  <div className="text-sm font-semibold">Register Patient</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="First name" value={newPatient.firstName} onChange={(firstName) => setNewPatient({ ...newPatient, firstName })} required />
+                    <Field label="Last name" value={newPatient.lastName} onChange={(lastName) => setNewPatient({ ...newPatient, lastName })} required />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Age" type="number" min="0" value={newPatient.age} onChange={(age) => setNewPatient({ ...newPatient, age })} required />
+                    <Field label="City" value={newPatient.city} onChange={(city) => setNewPatient({ ...newPatient, city })} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Gender</Label>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        {[["M", "Male"], ["F", "Female"]].map(([value, label]) => (
+                          <button type="button" key={value} onClick={() => setNewPatient({ ...newPatient, gender: value })}
+                            className={cn("rounded-lg border px-3 py-2 text-sm font-medium transition-all", newPatient.gender === value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Field label="Relation" value={newPatient.relation} onChange={(relation) => setNewPatient({ ...newPatient, relation })} />
+                  </div>
+                  <Button type="submit" disabled={isCreatingPatient}>{isCreatingPatient ? "Registering..." : "Register and select patient"}</Button>
+                </form>
               )}
               {found.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">{found.length} patient(s) found</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs text-muted-foreground">{found.length} patient(s) found</div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setIsRegisteringAnother((current) => !current)}>
+                      {isRegisteringAnother ? "Hide form" : "Register another patient"}
+                    </Button>
+                  </div>
                   {found.slice(0, 5).map((p) => (
                     <button
-                      key={p.id}
+                      key={p._id}
                       onClick={() => setSelected(p)}
                       className={cn(
                         "flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all",
-                        selected?.id === p.id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/50 hover:bg-muted/40",
+                        selected?._id === p._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/50 hover:bg-muted/40",
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <Avatar initials={p.name.split(" ").map((n) => n[0]).join("").slice(0, 2)} />
+                        <Avatar initials={getInitials(`${p.firstName} ${p.lastName}`)} />
                         <div>
-                          <div className="font-medium">{p.name}</div>
-                          <div className="text-xs text-muted-foreground">{p.id} · {p.phone}</div>
+                          <div className="font-medium">{p.firstName} {p.lastName}</div>
+                          <div className="text-xs text-muted-foreground">{p.patientId} - {p.phone}</div>
                         </div>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
                     </button>
                   ))}
                 </div>
+              )}
+              {hasSearched && found.length > 0 && isRegisteringAnother && (
+                <form onSubmit={handleCreatePatient} className="space-y-4 rounded-xl border border-border p-4">
+                  <div className="text-sm font-semibold">Register Another Patient</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="First name" value={newPatient.firstName} onChange={(firstName) => setNewPatient({ ...newPatient, firstName })} required />
+                    <Field label="Last name" value={newPatient.lastName} onChange={(lastName) => setNewPatient({ ...newPatient, lastName })} required />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Age" type="number" min="0" value={newPatient.age} onChange={(age) => setNewPatient({ ...newPatient, age })} required />
+                    <Field label="City" value={newPatient.city} onChange={(city) => setNewPatient({ ...newPatient, city })} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Gender</Label>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        {[["M", "Male"], ["F", "Female"]].map(([value, label]) => (
+                          <button type="button" key={value} onClick={() => setNewPatient({ ...newPatient, gender: value })}
+                            className={cn("rounded-lg border px-3 py-2 text-sm font-medium transition-all", newPatient.gender === value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Field label="Relation" value={newPatient.relation} onChange={(relation) => setNewPatient({ ...newPatient, relation })} />
+                  </div>
+                  <Button type="submit" disabled={isCreatingPatient}>{isCreatingPatient ? "Registering..." : "Register and select patient"}</Button>
+                </form>
               )}
 
               <div className="flex justify-end pt-2">
@@ -189,7 +322,7 @@ function NewAppointmentPage() {
                 <p className="text-sm text-muted-foreground">Please review all appointment details before confirming.</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <ReviewBlock icon={UserIcon} title="Patient" items={[["Name", selected.name], ["Patient ID", selected.id], ["Phone", selected.phone], ["Last Visit", selected.lastVisit]]} />
+                <ReviewBlock icon={UserIcon} title="Patient" items={[["Name", getPatientName(selected)], ["Patient ID", selected.patientId], ["Phone", selected.phone], ["Age", String(selected.age)]]} />
                 <ReviewBlock icon={CalendarCheck2} title="Appointment" items={[["Specialty", specialty], ["Doctor", "Dr. Daniel Cooper"], ["Date", "Monday, June 15, 2026"], ["Time", "10:00 AM"]]} />
                 <ReviewBlock icon={Bell} title="Reminders" items={[["Timing", "1 Hour Before"], ["Channel", "Email"]]} />
                 <ReviewBlock icon={FileText} title="Notes" items={[["Reason", "Quarterly cardiology follow..."], ["Clinical", "Patient reports occasion..."]]} />
@@ -207,14 +340,14 @@ function NewAppointmentPage() {
             <Card className="p-5 sticky top-20">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"><UserRound className="h-3.5 w-3.5" /> Patient Summary</div>
               <div className="flex flex-col items-center text-center">
-                <Avatar initials={selected.name.split(" ").map((n) => n[0]).join("").slice(0, 2)} />
-                <div className="mt-2 font-semibold">{selected.name}</div>
-                <div className="text-xs text-muted-foreground">{selected.id}</div>
+                <Avatar initials={getInitials(getPatientName(selected))} />
+                <div className="mt-2 font-semibold">{getPatientName(selected)}</div>
+                <div className="text-xs text-muted-foreground">{selected.patientId}</div>
               </div>
               <dl className="mt-4 space-y-2 text-sm">
                 <SumRow label="Phone" value={selected.phone} />
                 <SumRow label="Age" value={String(selected.age)} />
-                <SumRow label="Last Visit" value={selected.lastVisit} />
+                <SumRow label="Gender" value={selected.gender === "F" ? "Female" : "Male"} />
                 <SumRow label="Insurance" value="—" />
               </dl>
               <div className="mt-4 rounded-lg bg-primary-soft p-3 text-xs">
@@ -279,6 +412,23 @@ function SumRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between text-xs">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function getPatientName(patient: AppointmentPatient) {
+  return [patient.firstName, patient.lastName].filter(Boolean).join(" ") || "Unnamed Patient";
+}
+
+function getInitials(name: string) {
+  return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "PT";
+}
+
+function Field({ label, value, onChange, type = "text", required, min }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; min?: string }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <Input className="mt-1.5" type={type} min={min} value={value} onChange={(event) => onChange(event.target.value)} required={required} />
     </div>
   );
 }

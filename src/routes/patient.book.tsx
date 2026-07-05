@@ -1,14 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { PatientShell } from "./patient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, CheckCircle2, Users, User as UserIcon, HeartHandshake } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Users, User as UserIcon, HeartHandshake } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { specialties, doctors } from "@/lib/mock-data";
+import { usePatientRelatives } from "@/hooks/usePatientRelatives";
+import { useUser } from "@/hooks/useUser";
+import { useDoctors } from "@/hooks/useDoctors";
+import { Patient } from "@/services/patient.service";
+import { Appointment, type AppointmentSlot, type DoctorAvailability } from "@/services/appointment.service";
+import { CheckupService } from "@/services/checkup.service";
+import type { Doctor } from "@/services/doctor.service";
+import type { PatientWithPhone } from "@/services/patient.service";
+
+const MAX_BOOKING_WEEK_OFFSET = 7;
 
 export const Route = createFileRoute("/patient/book")({
   head: () => ({ meta: [{ title: "Book Appointment — MediFlow" }] }),
@@ -17,12 +26,161 @@ export const Route = createFileRoute("/patient/book")({
 
 function PatientBook() {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [who, setWho] = useState<"Self" | "Relative">("Self");
-  const [relative, setRelative] = useState({ first: "", last: "", age: "", gender: "Male", city: "", relation: "Parent" });
-  const [specialty, setSpecialty] = useState("Cardiology");
-  const [doctor, setDoctor] = useState(doctors[0].id);
+  const [selectedRelative, setSelectedRelative] = useState<PatientWithPhone | null>(null);
+  const [addedRelatives, setAddedRelatives] = useState<PatientWithPhone[]>([]);
+  const [showAddRelative, setShowAddRelative] = useState(false);
+  const [isCreatingRelative, setIsCreatingRelative] = useState(false);
+  const [relativeError, setRelativeError] = useState("");
+  const [newRelative, setNewRelative] = useState({ firstName: "", lastName: "", age: "", city: "", gender: "M", relation: "Other" });
+  const [checkupName, setCheckupName] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [doctor, setDoctor] = useState("");
+  const [reasonForVisit, setReasonForVisit] = useState("");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [availability, setAvailability] = useState<DoctorAvailability | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [slotError, setSlotError] = useState("");
+  const [bookingError, setBookingError] = useState("");
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [done, setDone] = useState(false);
+  const contact = getContact(user);
+  const contactPhone = contact?.phone;
+  const { data: relatives = [], isLoading: isLoadingRelatives, isError: relativesError } = usePatientRelatives(contactPhone, user?._id);
+  const { data: doctors = [], isLoading: isLoadingDoctors, isError: doctorsError } = useDoctors();
+  const availableDoctors = doctors.filter((item) => item.isAvailable !== false);
+  const specialties = Array.from(new Set(availableDoctors.map((item) => item.speciality).filter(Boolean))).sort();
+  const filteredDoctors = specialty ? availableDoctors.filter((item) => item.speciality === specialty) : [];
+  const selectedDoctor = availableDoctors.find((item) => item._id === doctor);
+  const weekDates = useMemo(() => buildWeekDates(weekOffset), [weekOffset]);
+  const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDates), [weekDates]);
+  const scheduledDays = useMemo(() => new Set((selectedDoctor?.schedule ?? []).map((slot) => slot.day.toLowerCase())), [selectedDoctor]);
+  const allRelatives = [...addedRelatives, ...relatives.filter((patient) => !addedRelatives.some((added) => added._id === patient._id))];
+  const selectedPatientName = who === "Self" ? "you" : selectedRelative ? getPatientName(selectedRelative) : "your relative";
+
+  useEffect(() => {
+    if (!selectedDoctor) {
+      setAppointmentDate("");
+      return;
+    }
+
+    if (appointmentDate && scheduledDays.has(getWeekday(appointmentDate).toLowerCase())) return;
+
+    const nextScheduledDate = weekDates.find((date) => !date.isPast && scheduledDays.has(date.day.toLowerCase()));
+    setAppointmentDate(nextScheduledDate?.value ?? "");
+  }, [appointmentDate, scheduledDays, selectedDoctor, weekDates]);
+
+  useEffect(() => {
+    if (!doctor || !appointmentDate) {
+      setAvailability(null);
+      setSelectedSlot(null);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingSlots(true);
+    setSlotError("");
+    setSelectedSlot(null);
+
+    Appointment.getDoctorAvailability(doctor, appointmentDate)
+      .then((response) => {
+        if (!active) return;
+        setAvailability(response);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setAvailability(null);
+        setSlotError(getErrorMessage(err) ?? "Unable to load slots for this day.");
+      })
+      .finally(() => {
+        if (active) setIsLoadingSlots(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [appointmentDate, doctor]);
+
+  const handleCreateRelative = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!contactPhone) return;
+    setRelativeError("");
+    setIsCreatingRelative(true);
+
+    try {
+      const response = await Patient.createPatientByPhone({
+        phone: contactPhone,
+        whatsappNo: contact.whatsappNo,
+        email: contact.email,
+        firstName: newRelative.firstName.trim(),
+        lastName: newRelative.lastName.trim(),
+        age: Number(newRelative.age),
+        city: newRelative.city.trim(),
+        gender: newRelative.gender,
+        relation: newRelative.relation.trim().toLowerCase() || "other",
+      });
+      const patient = { ...response.patient, phone: contactPhone } as PatientWithPhone;
+      setAddedRelatives((current) => [patient, ...current.filter((item) => item._id !== patient._id)]);
+      setSelectedRelative(patient);
+      setShowAddRelative(false);
+      setNewRelative({ firstName: "", lastName: "", age: "", city: "", gender: "M", relation: "Other" });
+    } catch (err) {
+      setRelativeError(getErrorMessage(err) ?? "Unable to add patient.");
+    } finally {
+      setIsCreatingRelative(false);
+    }
+  };
+
+  const handleConfirmBooking = async () => {
+    const patientId = who === "Self" ? user?._id : selectedRelative?._id;
+    const contactId = who === "Self" ? contact?._id : selectedRelative?.contactId;
+
+    if (!patientId || !contactId || !doctor || !appointmentDate || !selectedSlot) {
+      setBookingError("Please complete patient, doctor, date, and slot details.");
+      return;
+    }
+
+    setBookingError("");
+    setIsSubmittingBooking(true);
+
+    try {
+      const checkupResponse = await CheckupService.findOrCreate({
+        name: checkupName.trim(),
+        specialityRequired: specialty,
+      });
+
+      await Appointment.bookAppointment({
+        contactId,
+        patientId,
+        checkupId: checkupResponse.data._id,
+        doctorId: doctor,
+        reasonForVisit: reasonForVisit.trim(),
+        appointmentDate,
+        appointmentTime: selectedSlot.time,
+        patientReminderMinutes: 60,
+        bufferMinutes: 5,
+      });
+
+      setDone(true);
+    } catch (err) {
+      setBookingError(getErrorMessage(err) ?? "Unable to book appointment. Please try another slot.");
+      if (doctor && appointmentDate) {
+        try {
+          const response = await Appointment.getDoctorAvailability(doctor, appointmentDate);
+          setAvailability(response);
+          setSelectedSlot(null);
+        } catch {
+          setAvailability(null);
+        }
+      }
+    } finally {
+      setIsSubmittingBooking(false);
+    }
+  };
 
   if (done) {
     return (
@@ -33,7 +191,7 @@ function PatientBook() {
               <CheckCircle2 className="h-8 w-8" />
             </div>
             <h2 className="text-xl font-bold">Appointment Confirmed!</h2>
-            <p className="mt-1 text-sm text-muted-foreground">We've scheduled your appointment for {who === "Self" ? "you" : `${relative.first} ${relative.last}`}.</p>
+            <p className="mt-1 text-sm text-muted-foreground">We've scheduled your appointment for {selectedPatientName}.</p>
             <div className="mt-5 flex justify-center gap-2">
               <Button variant="outline" onClick={() => navigate({ to: "/patient/appointments" })}>View Appointments</Button>
               <Button onClick={() => { setDone(false); setStep(1); }}>Book Another</Button>
@@ -77,12 +235,12 @@ function PatientBook() {
             <div className="grid gap-3 sm:grid-cols-2">
               {([
                 { v: "Self" as const, icon: UserIcon, t: "For Myself", d: "Use your existing patient profile" },
-                { v: "Relative" as const, icon: HeartHandshake, t: "For a Relative", d: "Add basic details about the patient" },
+                { v: "Relative" as const, icon: HeartHandshake, t: "For a Relative", d: "Choose another patient on your phone number" },
               ]).map((o) => {
                 const Icon = o.icon;
                 const active = who === o.v;
                 return (
-                  <button key={o.v} onClick={() => setWho(o.v)} className={cn("group relative rounded-xl border p-5 text-left transition-all hover:-translate-y-0.5",
+                  <button key={o.v} onClick={() => { setWho(o.v); if (o.v === "Self") setSelectedRelative(null); }} className={cn("group relative rounded-xl border p-5 text-left transition-all hover:-translate-y-0.5",
                     active ? "border-primary bg-primary-soft ring-2 ring-primary/20" : "border-border hover:border-primary/40")}>
                     <div className={cn("grid h-10 w-10 place-items-center rounded-lg", active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
                       <Icon className="h-5 w-5" />
@@ -97,36 +255,84 @@ function PatientBook() {
 
             {who === "Relative" && (
               <div className="rounded-xl border border-border bg-muted/30 p-5 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4 text-primary" /> Relative's Information</div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div><Label>First name</Label><Input className="mt-1.5" value={relative.first} onChange={(e) => setRelative({ ...relative, first: e.target.value })} /></div>
-                  <div><Label>Last name</Label><Input className="mt-1.5" value={relative.last} onChange={(e) => setRelative({ ...relative, last: e.target.value })} /></div>
-                  <div><Label>Age</Label><Input type="number" className="mt-1.5" value={relative.age} onChange={(e) => setRelative({ ...relative, age: e.target.value })} /></div>
-                  <div><Label>City</Label><Input className="mt-1.5" value={relative.city} onChange={(e) => setRelative({ ...relative, city: e.target.value })} /></div>
-                  <div className="sm:col-span-2">
-                    <Label>Gender</Label>
-                    <div className="mt-1.5 grid grid-cols-3 gap-2">
-                      {["Male", "Female", "Other"].map((g) => (
-                        <button type="button" key={g} onClick={() => setRelative({ ...relative, gender: g })}
-                          className={cn("rounded-lg border px-3 py-2 text-sm font-medium transition-all", relative.gender === g ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>{g}</button>
-                      ))}
-                    </div>
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4 text-primary" /> Existing Patients on Your Phone Number</div>
+                {!contactPhone ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">No phone number is linked to your profile.</div>
+                ) : isLoadingRelatives ? (
+                  <div className="rounded-lg border border-border bg-background px-3 py-3 text-sm text-muted-foreground">Loading relatives...</div>
+                ) : relativesError ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">Unable to load patients against this phone number.</div>
+                ) : allRelatives.length === 0 ? (
+                  <div className="rounded-lg border border-border bg-background px-3 py-3 text-sm text-muted-foreground">No other patients are registered against this phone number.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {allRelatives.map((patient) => (
+                      <button
+                        type="button"
+                        key={patient._id}
+                        onClick={() => setSelectedRelative(patient)}
+                        className={cn("flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all", selectedRelative?._id === patient._id ? "border-primary bg-primary-soft" : "border-border bg-background hover:border-primary/40")}
+                      >
+                        <div>
+                          <div className="text-sm font-semibold">{getPatientName(patient)}</div>
+                          <div className="text-xs text-muted-foreground">{patient.patientId} - {patient.age} years - {patient.gender === "F" ? "Female" : "Male"}</div>
+                        </div>
+                        {selectedRelative?._id === patient._id && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                      </button>
+                    ))}
                   </div>
-                  <div className="sm:col-span-2">
-                    <Label>Relation</Label>
-                    <div className="mt-1.5 flex flex-wrap gap-2">
-                      {["Parent", "Spouse", "Child", "Sibling", "Other"].map((r) => (
-                        <button type="button" key={r} onClick={() => setRelative({ ...relative, relation: r })}
-                          className={cn("rounded-full border px-3 py-1.5 text-xs font-medium", relative.relation === r ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary/40")}>{r}</button>
-                      ))}
-                    </div>
+                )}
+                {relativeError && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{relativeError}</div>}
+                {contactPhone && (
+                  <div className="mt-4">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAddRelative((current) => !current)}>
+                      {showAddRelative ? "Hide form" : "Add another patient"}
+                    </Button>
                   </div>
-                </div>
+                )}
+                {contactPhone && showAddRelative && (
+                  <form onSubmit={handleCreateRelative} className="mt-4 space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div className="text-sm font-semibold">Add Patient Against This Phone</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="First name" value={newRelative.firstName} onChange={(firstName) => setNewRelative({ ...newRelative, firstName })} required />
+                      <Field label="Last name" value={newRelative.lastName} onChange={(lastName) => setNewRelative({ ...newRelative, lastName })} required />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Age" type="number" min="0" value={newRelative.age} onChange={(age) => setNewRelative({ ...newRelative, age })} required />
+                      <Field label="City" value={newRelative.city} onChange={(city) => setNewRelative({ ...newRelative, city })} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Gender</Label>
+                        <div className="mt-1.5 grid grid-cols-2 gap-2">
+                          {[["M", "Male"], ["F", "Female"]].map(([value, label]) => (
+                            <button type="button" key={value} onClick={() => setNewRelative({ ...newRelative, gender: value })}
+                              className={cn("rounded-lg border px-3 py-2 text-sm font-medium transition-all", newRelative.gender === value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Relation</Label>
+                        <div className="mt-1.5 flex flex-wrap gap-2">
+                          {["Parent", "Spouse", "Child", "Sibling", "Other"].map((relation) => (
+                            <button type="button" key={relation} onClick={() => setNewRelative({ ...newRelative, relation })}
+                              className={cn("rounded-full border px-3 py-1.5 text-xs font-medium", newRelative.relation === relation ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary/40")}>
+                              {relation}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <Button type="submit" disabled={isCreatingRelative}>{isCreatingRelative ? "Adding..." : "Add and select patient"}</Button>
+                  </form>
+                )}
               </div>
             )}
 
             <div className="flex justify-end pt-2">
-              <Button onClick={() => setStep(2)} disabled={who === "Relative" && (!relative.first || !relative.last || !relative.age)}>
+              <Button onClick={() => setStep(2)} disabled={who === "Relative" && !selectedRelative}>
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -140,37 +346,162 @@ function PatientBook() {
               <p className="text-sm text-muted-foreground">Choose specialty, doctor, and time</p>
             </div>
             <div>
+              <Label>Checkup Name</Label>
+              <Input className="mt-1.5" value={checkupName} onChange={(event) => setCheckupName(event.target.value)} placeholder="General consultation" required />
+            </div>
+            <div>
               <Label>Specialty</Label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {specialties.map((s) => (
-                  <button key={s} onClick={() => setSpecialty(s)} className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
-                    specialty === s ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:border-primary/40")}>{s}</button>
-                ))}
-              </div>
+              <select
+                className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={specialty}
+                onChange={(event) => { setSpecialty(event.target.value); setDoctor(""); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
+                disabled={isLoadingDoctors || specialties.length === 0}
+                required
+              >
+                <option value="">{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}</option>
+                {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              {doctorsError && <div className="mt-2 text-sm text-destructive">Unable to load available specialties.</div>}
             </div>
             <div>
               <Label>Doctor</Label>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {doctors.map((d) => (
-                  <button key={d.id} onClick={() => setDoctor(d.id)} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
-                    doctor === d.id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
-                    <div className="grid h-9 w-9 place-items-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">{d.id}</div>
-                    <div><div className="text-sm font-medium">{d.name}</div><div className="text-xs text-muted-foreground">{d.specialty}</div></div>
-                  </button>
-                ))}
-              </div>
+              {!specialty ? (
+                <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a specialty to see doctors.</div>
+              ) : filteredDoctors.length === 0 ? (
+                <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No available doctors found for this specialty.</div>
+              ) : (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {filteredDoctors.map((item) => (
+                    <button key={item._id} onClick={() => { setDoctor(item._id); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
+                      doctor === item._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
+                      <div className="grid h-9 w-9 place-items-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">{getInitials(getDoctorName(item))}</div>
+                      <div><div className="text-sm font-medium">{getDoctorName(item)}</div><div className="text-xs text-muted-foreground">{item.speciality}</div></div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div><Label>Date</Label><Input type="date" className="mt-1.5" defaultValue="2026-06-15" /></div>
-              <div><Label>Time</Label><Input type="time" className="mt-1.5" defaultValue="10:00" /></div>
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <Label>Date and free slot</Label>
+                  <div className="mt-1 text-xs text-muted-foreground">{weekRangeLabel}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={weekOffset === 0}
+                    onClick={() => { setWeekOffset((current) => Math.max(0, current - 1)); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
+                    aria-label="Previous week"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="min-w-28 text-center text-xs font-medium text-muted-foreground">
+                    {weekOffset === 0 ? "Next 7 days" : `Week ${weekOffset + 1}`}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={weekOffset === MAX_BOOKING_WEEK_OFFSET}
+                    onClick={() => { setWeekOffset((current) => Math.min(MAX_BOOKING_WEEK_OFFSET, current + 1)); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
+                    aria-label="Next week"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {!selectedDoctor ? (
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a doctor to see available days and slots.</div>
+              ) : (
+                <>
+                  <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                    {weekDates.map((date) => {
+                      const hasSchedule = scheduledDays.has(date.day.toLowerCase());
+                      const active = appointmentDate === date.value;
+                      return (
+                        <button
+                          type="button"
+                          key={date.value}
+                          disabled={!hasSchedule || date.isPast}
+                          onClick={() => { setAppointmentDate(date.value); setSelectedSlot(null); }}
+                          className={cn("rounded-xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                            active ? "border-primary bg-primary-soft ring-2 ring-primary/20" : "border-border hover:border-primary/40")}
+                        >
+                          <div className="text-xs font-medium text-muted-foreground">{date.day.slice(0, 3)}</div>
+                          <div className="text-sm font-semibold">{date.label}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!weekDates.some((date) => !date.isPast && scheduledDays.has(date.day.toLowerCase())) && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                      <span>This doctor has no schedule days in this date range.</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={weekOffset === MAX_BOOKING_WEEK_OFFSET}
+                        onClick={() => { setWeekOffset((current) => Math.min(MAX_BOOKING_WEEK_OFFSET, current + 1)); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
+                      >
+                        Try later week <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {isLoadingSlots ? (
+                    <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Checking doctor schedule and existing appointments...</div>
+                  ) : slotError ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{slotError}</div>
+                  ) : availability?.schedule === null ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{availability.message}. Please change the day or week.</div>
+                  ) : availability && availability.slots.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                      {availability.slots.map((slot) => (
+                        <button
+                          type="button"
+                          key={slot.time}
+                          disabled={!slot.available}
+                          onClick={() => setSelectedSlot(slot)}
+                          className={cn("rounded-lg border px-3 py-2 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
+                            selectedSlot?.time === slot.time ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary/40")}
+                        >
+                          {slot.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : availability ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">No free slots are available for this day. Please change the date/day.</div>
+                  ) : null}
+
+                  {availability && availability.slots.length > 0 && !availability.slots.some((slot) => slot.available) && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                      <span>All slots are already booked for this doctor on {formatDisplayDate(appointmentDate)}. Please choose another day.</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={weekOffset === MAX_BOOKING_WEEK_OFFSET}
+                        onClick={() => { setWeekOffset((current) => Math.min(MAX_BOOKING_WEEK_OFFSET, current + 1)); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
+                      >
+                        Try later week <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div>
               <Label>Reason for Visit</Label>
-              <Textarea className="mt-1.5" rows={3} placeholder="Describe your symptoms or reason..." />
+              <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} placeholder="Describe your symptoms or reason..." />
             </div>
             <div className="flex items-center justify-between pt-2">
               <Button variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
-              <Button onClick={() => setStep(3)}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
+              <Button onClick={() => setStep(3)} disabled={!checkupName.trim() || !specialty || !doctor || !appointmentDate || !selectedSlot}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
             </div>
           </div>
         )}
@@ -186,10 +517,10 @@ function PatientBook() {
                 <Row k="For" v={who} />
                 {who === "Relative" ? (
                   <>
-                    <Row k="Name" v={`${relative.first} ${relative.last}`} />
-                    <Row k="Age / Gender" v={`${relative.age} · ${relative.gender}`} />
-                    <Row k="City" v={relative.city} />
-                    <Row k="Relation" v={relative.relation} />
+                    <Row k="Name" v={selectedRelative ? getPatientName(selectedRelative) : ""} />
+                    <Row k="Age / Gender" v={selectedRelative ? `${selectedRelative.age} - ${selectedRelative.gender === "F" ? "Female" : "Male"}` : ""} />
+                    <Row k="Patient ID" v={selectedRelative?.patientId ?? ""} />
+                    <Row k="Relation" v={selectedRelative?.relation ?? ""} />
                   </>
                 ) : (
                   <>
@@ -199,15 +530,20 @@ function PatientBook() {
                 )}
               </Block>
               <Block title="Appointment">
+                <Row k="Checkup" v={checkupName} />
                 <Row k="Specialty" v={specialty} />
-                <Row k="Doctor" v={doctors.find((d) => d.id === doctor)?.name ?? ""} />
-                <Row k="Date" v="Monday, June 15, 2026" />
-                <Row k="Time" v="10:00 AM" />
+                <Row k="Doctor" v={selectedDoctor ? getDoctorName(selectedDoctor) : ""} />
+                <Row k="Date" v={formatDisplayDate(appointmentDate)} />
+                <Row k="Time" v={selectedSlot?.label ?? ""} />
+                {reasonForVisit.trim() && <Row k="Reason" v={reasonForVisit.trim()} />}
               </Block>
             </div>
+            {bookingError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{bookingError}</div>}
             <div className="flex items-center justify-between pt-2">
               <Button variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-4 w-4" /> Back</Button>
-              <Button onClick={() => setDone(true)}>Confirm Booking <CheckCircle2 className="h-4 w-4" /></Button>
+              <Button onClick={handleConfirmBooking} disabled={isSubmittingBooking}>
+                {isSubmittingBooking ? "Booking..." : "Confirm Booking"} <CheckCircle2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         )}
@@ -230,6 +566,95 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex items-center justify-between gap-2 text-sm">
       <dt className="text-muted-foreground">{k}</dt>
       <dd className="font-medium text-right">{v}</dd>
+    </div>
+  );
+}
+
+function getPatientName(patient: PatientWithPhone) {
+  return [patient.firstName, patient.lastName].filter(Boolean).join(" ") || "Unnamed Patient";
+}
+
+function getDoctorName(doctor: Doctor) {
+  const user = typeof doctor.userId === "object" ? doctor.userId : undefined;
+  return [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Unnamed Doctor";
+}
+
+function getInitials(name: string) {
+  return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "DR";
+}
+
+function buildWeekDates(offset: number) {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() + offset * 7);
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const value = toDateInputValue(date);
+    return {
+      value,
+      day: getWeekday(value),
+      label: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      isPast: false,
+    };
+  });
+}
+
+function getWeekRangeLabel(dates: ReturnType<typeof buildWeekDates>) {
+  const first = dates[0]?.value;
+  const last = dates[dates.length - 1]?.value;
+  if (!first || !last) return "";
+  return `${formatShortDate(first)} - ${formatShortDate(last)}`;
+}
+
+function formatShortDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getWeekday(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
+}
+
+function formatDisplayDate(value: string) {
+  if (!value) return "";
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getContact(user: any) {
+  return typeof user?.contactId === "object" ? user.contactId : undefined;
+}
+
+function getErrorMessage(err: unknown) {
+  if (typeof err === "object" && err && "response" in err) {
+    const response = (err as { response?: { data?: { message?: string | string[] } } }).response;
+    const message = response?.data?.message;
+    return Array.isArray(message) ? message.join(", ") : message;
+  }
+  return undefined;
+}
+
+function Field({ label, value, onChange, type = "text", required, min }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; min?: string }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <Input className="mt-1.5" type={type} min={min} value={value} onChange={(event) => onChange(event.target.value)} required={required} />
     </div>
   );
 }
