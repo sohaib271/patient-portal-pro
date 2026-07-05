@@ -20,6 +20,10 @@ export type PatientRecord = {
     hasPassword?: boolean;
 };
 
+export type PatientWithPhone = PatientRecord & {
+    phone: string;
+};
+
 export type PatientRegistration = {
     contactId: string;
     firstName: string;
@@ -31,7 +35,29 @@ export type PatientRegistration = {
     password: string;
 };
 
+export type AppointmentPatientRegistration = {
+    phone: string;
+    whatsappNo?: string;
+    email?: string;
+    firstName: string;
+    lastName: string;
+    age: number;
+    city?: string;
+    gender?: string;
+    relation?: string;
+};
+
 export class Patient{
+    static async searchByPhone(phone:string){
+        const res=await api.post("/patient/get-by-phone",{ phone });
+        return res.data;
+    }
+
+    static async createPatientByPhone(data:AppointmentPatientRegistration){
+        const res=await api.post("/patient/create-patient-by-phone",data);
+        return res.data;
+    }
+
     static async addOrSearchContact(data:PatientContact){
         const res=await api.post("/patient/contact",data);
         return res.data;
