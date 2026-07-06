@@ -35,6 +35,18 @@ export function useDoctors() {
   });
 }
 
+export function useDoctorProfile(userId?: string) {
+  return useQuery({
+    queryKey: userId ? doctorQueryKey(userId) : ["doctor", "me"],
+    queryFn: async () => {
+      if (!userId) return null;
+      const response = await DoctorService.getDoctorById(userId);
+      return response.doctor as Doctor;
+    },
+    enabled: Boolean(userId),
+  });
+}
+
 export function useCreateDoctor() {
   const queryClient = useQueryClient();
 

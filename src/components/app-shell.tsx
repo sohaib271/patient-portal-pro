@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Users,
   Stethoscope,
+  CalendarClock,
   Bell,
   Settings as SettingsIcon,
   Search,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/hooks/useUser";
+import { useDoctorProfile } from "@/hooks/useDoctors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,13 +33,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const nav = [
+const adminNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { to: "/appointments", label: "Appointments", icon: CalendarDays },
   { to: "/patients", label: "Patients", icon: Users },
   { to: "/doctors", label: "Doctors", icon: Stethoscope },
   { to: "/notifications", label: "Notifications", icon: Bell },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
+];
+
+const doctorNav = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
+  { to: "/appointments", label: "My Appointments", icon: CalendarDays },
+  { to: "/patients", label: "My Patients", icon: Users },
+  { to: "/doctors", label: "My Schedule", icon: CalendarClock },
 ];
 
 export function Logo({ collapsed }: { collapsed?: boolean }) {
@@ -81,9 +90,14 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user } = useUser();
+  const userId = user?._id;
+  const { data: doctorProfile } = useDoctorProfile(user?.role === "doctor" ? userId : undefined);
   const staffName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
   const staffInitials = staffName.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase();
   const staffRole = user?.role ? user.role.replace(/^\w/, (letter: string) => letter.toUpperCase()) : "Staff";
+  const staffSubtitle = user?.role === "doctor" ? doctorProfile?.speciality ?? "Doctor" : staffRole;
+  const nav = user?.role === "doctor" ? doctorNav : adminNav;
+  const portalLabel = user?.role === "doctor" ? "DOCTOR PORTAL" : "RECEPTION PORTAL";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -144,7 +158,7 @@ export function AppShell({
         <div className="border-t border-sidebar-border p-3">
           {!collapsed && (
             <div className="mb-2 px-1 text-[10px] font-semibold tracking-[0.16em] text-muted-foreground">
-              RECEPTION PORTAL
+              {portalLabel}
             </div>
           )}
           <div className={cn("flex items-center gap-3 rounded-lg p-2 hover:bg-muted/60", collapsed && "justify-center")}>
@@ -154,7 +168,7 @@ export function AppShell({
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-foreground">{staffName}</div>
-                <div className="truncate text-xs text-muted-foreground">{staffRole}</div>
+                <div className="truncate text-xs text-muted-foreground">{staffSubtitle}</div>
               </div>
             )}
           </div>
@@ -257,8 +271,11 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     Confirmed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
     Scheduled: "bg-sky-50 text-sky-700 ring-sky-200",
+    Booked: "bg-sky-50 text-sky-700 ring-sky-200",
     Pending: "bg-amber-50 text-amber-700 ring-amber-200",
+    "In Progress": "bg-violet-50 text-violet-700 ring-violet-200",
     Completed: "bg-slate-100 text-slate-700 ring-slate-200",
+    Delayed: "bg-orange-50 text-orange-700 ring-orange-200",
     Cancelled: "bg-rose-50 text-rose-700 ring-rose-200",
     "No-show": "bg-rose-50 text-rose-700 ring-rose-200",
     Available: "bg-emerald-50 text-emerald-700 ring-emerald-200",

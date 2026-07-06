@@ -1,6 +1,7 @@
 import { api } from "./api";
 
 export type PatientContact = {
+    _id?: string;
     phone: string;
     whatsappNo: string;
     email: string;
@@ -8,7 +9,7 @@ export type PatientContact = {
 
 export type PatientRecord = {
     _id: string;
-    contactId: string;
+    contactId: string | PatientContact;
     patientId: string;
     firstName: string;
     lastName: string;
@@ -48,6 +49,11 @@ export type AppointmentPatientRegistration = {
 };
 
 export class Patient{
+    static async getAllPatients(){
+        const res=await api.get("/patient/get-all");
+        return res.data as { success:boolean; patients:PatientRecord[] };
+    }
+
     static async searchByPhone(phone:string){
         const res=await api.post("/patient/get-by-phone",{ phone });
         return res.data;
