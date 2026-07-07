@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Appointment, type AppointmentRecord, type UpdateAppointmentPayload } from "@/services/appointment.service";
+import { Appointment, type AppointmentRecord, type FollowUpRecord, type UpdateAppointmentPayload } from "@/services/appointment.service";
 
 export const appointmentsQueryKey = (date?: string) => ["appointments", date ?? "all"] as const;
 
 export const doctorAppointmentsQueryKey = (doctorId?: string, date?: string) => ["doctor-appointments", doctorId ?? "none", date ?? "all"] as const;
 export const myAppointmentsQueryKey = (date?: string) => ["my-appointments", date ?? "all"] as const;
+export const followUpsQueryKey = (date?: string) => ["follow-ups", date ?? "all"] as const;
+export const myFollowUpsQueryKey = (date?: string) => ["my-follow-ups", date ?? "all"] as const;
 
 export function useAppointments(date?: string, enabled = true) {
   return useQuery({
@@ -35,6 +37,28 @@ export function useMyAppointments(date?: string, enabled = true) {
     queryFn: async () => {
       const response = await Appointment.getMyAppointments(date);
       return Array.isArray(response?.appointments) ? response.appointments : [];
+    },
+    enabled,
+  });
+}
+
+export function useFollowUps(date?: string, enabled = true) {
+  return useQuery({
+    queryKey: followUpsQueryKey(date),
+    queryFn: async () => {
+      const response = await Appointment.getFollowUps(date);
+      return Array.isArray(response?.followUps) ? response.followUps as FollowUpRecord[] : [];
+    },
+    enabled,
+  });
+}
+
+export function useMyFollowUps(date?: string, enabled = true) {
+  return useQuery({
+    queryKey: myFollowUpsQueryKey(date),
+    queryFn: async () => {
+      const response = await Appointment.getMyFollowUps(date);
+      return Array.isArray(response?.followUps) ? response.followUps as FollowUpRecord[] : [];
     },
     enabled,
   });

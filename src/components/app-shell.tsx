@@ -36,6 +36,7 @@ import {
 const adminNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { to: "/appointments", label: "Appointments", icon: CalendarDays },
+  { to: "/follow-ups", label: "Follow-ups", icon: CalendarClock },
   { to: "/patients", label: "Patients", icon: Users },
   { to: "/doctors", label: "Doctors", icon: Stethoscope },
   { to: "/notifications", label: "Notifications", icon: Bell },
@@ -45,6 +46,7 @@ const adminNav = [
 const doctorNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { to: "/appointments", label: "My Appointments", icon: CalendarDays },
+  { to: "/follow-ups", label: "My Follow-ups", icon: CalendarClock },
   { to: "/patients", label: "My Patients", icon: Users },
   { to: "/doctors", label: "My Schedule", icon: CalendarClock },
 ];

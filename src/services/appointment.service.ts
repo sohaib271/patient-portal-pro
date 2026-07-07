@@ -75,6 +75,45 @@ export type UpdateAppointmentPayload = {
     bufferMinutes?: number;
 };
 
+export type FollowUpReason = "planned_revisit" | "emergency_revisit" | "test_only" | "prescription_pickup" | "other";
+export type HandlerType = "doctor" | "nurse" | "self";
+
+export type CreateFollowUpPayload = {
+    patientId: string;
+    handlerType: HandlerType;
+    doctorId?: string;
+    followUpDate: string;
+    followUpTime?: string;
+    reason: FollowUpReason;
+    reasonNote: string;
+    notificationChannel?: string[];
+    parentAppointmentId?: string;
+    checkupId?: string;
+    patientReminderMinutes?: number;
+    bufferMinutes?: number;
+};
+
+export type FollowUpRecord = {
+    _id: string;
+    patientId?: string | AppointmentPatient;
+    doctorId?: string | {
+        _id: string;
+        speciality?: string;
+        userId?: string | { _id: string; firstName?: string; lastName?: string };
+    } | null;
+    handlerType: HandlerType;
+    followUpDate: string;
+    reason: FollowUpReason;
+    reasonNote?: string;
+    parentAppointmentId?: string | { _id?: string; appointmentDate?: string; turnNumber?: number } | null;
+    checkupId?: string | { _id: string; name?: string; specialityRequired?: string } | null;
+    turnNumber?: number;
+    estimatedTurnTime?: string;
+    patientReminderMinutes?: number;
+    bufferMinutes?: number;
+    status?: string;
+};
+
 export class Appointment{
     static async getDoctorAppointments(doctorId:string,date?:string){
         const res = await api.get(`/appointment/doctor/${doctorId}`,{params:{date}});
@@ -97,6 +136,22 @@ export class Appointment{
     static async getAppointments(date?:string){
         const res=await api.get("/appointment",{params:{date}});
         return res.data as { success:boolean; date?:string; count:number; appointments:AppointmentRecord[] };
+    }
+    static async getAppointmentById(appointmentId:string){
+        const res=await api.get(`/appointment/${appointmentId}`);
+        return res.data as { success:boolean; appointment:AppointmentRecord };
+    }
+    static async createFollowUp(data:CreateFollowUpPayload){
+        const res=await api.post("/appointment/follow-up",data);
+        return res.data as { success:boolean; message:string; followUp:unknown };
+    }
+    static async getFollowUps(date?:string){
+        const res=await api.get("/appointment/get-follow-up",{params:{date}});
+        return res.data as { success:boolean; date?:string; count:number; followUps:FollowUpRecord[] };
+    }
+    static async getMyFollowUps(date?:string){
+        const res=await api.get("/appointment/my-follow-ups",{params:{date}});
+        return res.data as { success:boolean; date?:string; count:number; followUps:FollowUpRecord[] };
     }
     static async updateAppointment(appointmentId:string,data:UpdateAppointmentPayload){
         const res=await api.patch(`/appointment/${appointmentId}`,data);

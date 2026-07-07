@@ -67,7 +67,7 @@ function AdminDashboard() {
         <div className="space-y-6 lg:col-span-2">
           <Card className="overflow-hidden p-5">
             <h3 className="mb-3 text-sm font-semibold text-foreground">Quick Actions</h3>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Link to="/appointments/new" className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5">
                 <Plus className="mb-6 h-6 w-6" />
                 <div className="font-semibold">Book a New Appointment</div>
@@ -81,6 +81,10 @@ function AdminDashboard() {
               <Link to="/doctors" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
                 <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarRange className="h-5 w-5" /></div>
                 <div className="text-sm font-medium">View Doctor Schedules</div>
+              </Link>
+              <Link to="/follow-ups/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-5 w-5" /></div>
+                <div className="text-sm font-medium">Create Follow-up</div>
               </Link>
             </div>
           </Card>
@@ -189,6 +193,10 @@ function DoctorDashboard() {
                 <Link to="/patients" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
                   <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><UserPlus className="h-4 w-4" /></div>
                   <div className="text-sm font-medium">Register a New Patient</div>
+                </Link>
+                <Link to="/follow-ups/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-4 w-4" /></div>
+                  <div className="text-sm font-medium">Create Follow-up</div>
                 </Link>
               </div>
             </div>
