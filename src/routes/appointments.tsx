@@ -153,12 +153,21 @@ function AppointmentsList() {
       </Card>
 
       <AppointmentDetails appointment={viewing} open={Boolean(viewing)} onOpenChange={(open) => !open && setViewing(null)} />
-      <AppointmentEditor appointment={editing} open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)} lockSchedule={isDoctor} />
+      <AppointmentEditor
+  appointment={editing}
+  open={Boolean(editing)}
+  onOpenChange={(open) => !open && setEditing(null)}
+  lockSchedule={isDoctor}
+  onCreateFollowUp={(appointment) => {
+    setEditing(null);
+    // e.g. navigate({ to: "/follow-ups/new", search: { appointmentId: appointment._id, patientId: ... } })
+  }}
+/>
     </AppShell>
   );
 }
 
-function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = false }: { appointment: AppointmentRecord | null; open: boolean; onOpenChange: (open: boolean) => void; lockSchedule?: boolean }) {
+function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = false, onCreateFollowUp }: { appointment: AppointmentRecord | null; open: boolean; onOpenChange: (open: boolean) => void; lockSchedule?: boolean; onCreateFollowUp?: (appointment: AppointmentRecord) => void }) {
   const [status, setStatus] = useState<AppointmentStatus>("pending");
   const [specialty, setSpecialty] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -176,11 +185,32 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
   const selectedDoctor = availableDoctors.find((doctor) => doctor._id === doctorId);
   const weekDates = useMemo(() => buildWeekDates(weekOffset), [weekOffset]);
   const scheduledDays = useMemo(() => new Set((selectedDoctor?.schedule ?? []).map((slot) => slot.day.toLowerCase())), [selectedDoctor]);
+
+  const isCompleted = appointment?.status === "completed";
   const isDelayedStatus = status === "delayed";
-  const canEditSchedule = !lockSchedule && !isDelayedStatus;
+  // Completed appointments are fully locked — no schedule edits, no field edits at all except viewing.
+  const canEditSchedule = !lockSchedule && !isDelayedStatus && !isCompleted;
+  const isReadOnly = isCompleted;
+
+  const originalDoctorId = appointment ? getDoctorId(appointment) : "";
+  const originalDate = appointment ? getDateValue(appointment) : "";
+  const originalTime = appointment ? getTimeValue(appointment.estimatedTurnTime) : "";
+  const originalBufferMinutes = appointment?.bufferMinutes ?? 5;
+  const scheduleFieldsChanged = canEditSchedule && Boolean(appointment) && (
+    doctorId !== originalDoctorId ||
+    appointmentDate !== originalDate ||
+    bufferMinutes !== originalBufferMinutes
+  );
+
+  // Only exclude the current appointment's slot when we're checking availability
+  // for the SAME doctor+date it's already booked on — otherwise there's nothing to exclude.
+  const excludeAppointmentId = appointment && doctorId === originalDoctorId && appointmentDate === originalDate
+    ? appointment._id
+    : undefined;
+
   const availabilityQuery = useQuery({
-    queryKey: ["doctor-availability", doctorId, appointmentDate, bufferMinutes, appointment?._id],
-    queryFn: () => Appointment.getDoctorAvailability(doctorId, appointmentDate, bufferMinutes, appointment?._id),
+    queryKey: ["doctor-availability", doctorId, appointmentDate, bufferMinutes, excludeAppointmentId],
+    queryFn: () => Appointment.getDoctorAvailability(doctorId, appointmentDate, bufferMinutes, excludeAppointmentId),
     enabled: Boolean(open && canEditSchedule && doctorId && appointmentDate),
   });
 
@@ -199,17 +229,32 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
   }, [appointment, open]);
 
   useEffect(() => {
-    if (!open || !selectedDoctor) return;
+    if (!open || !selectedDoctor || !canEditSchedule) return;
     if (appointmentDate && scheduledDays.has(getWeekday(appointmentDate).toLowerCase())) return;
     const nextScheduledDate = weekDates.find((date) => scheduledDays.has(date.day.toLowerCase()));
     setAppointmentDate(nextScheduledDate?.value ?? "");
-  }, [appointmentDate, open, scheduledDays, selectedDoctor, weekDates]);
+  }, [appointmentDate, open, scheduledDays, selectedDoctor, weekDates, canEditSchedule]);
+
+  // Mark the appointment's own current slot as selected/available by default when nothing changed yet,
+  // so the disabled-Save logic doesn't force a reselect when the user hasn't touched schedule fields.
+  const effectiveSlotOk = !canEditSchedule || !scheduleFieldsChanged || Boolean(selectedSlot);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!appointment) return;
-    const time = selectedSlot?.time ?? getTimeValue(appointment.estimatedTurnTime);
+    if (!appointment || isReadOnly) return;
+    const time = selectedSlot?.time ?? originalTime;
     setError("");
+
+    if (canEditSchedule && scheduleFieldsChanged && !selectedSlot) {
+      setError("Please select an available slot before saving schedule changes.");
+      return;
+    }
+
+    if (canEditSchedule && selectedSlot && !selectedSlot.available) {
+      setError("Selected slot is no longer available. Please choose another slot.");
+      availabilityQuery.refetch();
+      return;
+    }
 
     try {
       const data = lockSchedule || isDelayedStatus
@@ -240,85 +285,114 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Update Appointment</DialogTitle>
-          <DialogDescription>Change status, doctor, date, slot, or visit notes.</DialogDescription>
+          <DialogTitle>{isCompleted ? "Appointment (Completed)" : "Update Appointment"}</DialogTitle>
+          <DialogDescription>
+            {isCompleted
+              ? "This appointment is completed and can no longer be edited. You can schedule a follow-up instead."
+              : "Change status, doctor, date, slot, or visit notes."}
+          </DialogDescription>
         </DialogHeader>
+
+        {isCompleted && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Completed appointments are locked. Need to see the patient again?{" "}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => appointment && onCreateFollowUp?.(appointment)}
+            >
+              Schedule a follow-up
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label>Status</Label>
-              <select className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as AppointmentStatus)}>
-                {statuses.filter((item) => item.value !== "All").map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
-              {status === "delayed" && <p className="mt-1 text-xs text-muted-foreground">Delayed appointments are ignored by the scheduling system.</p>}
-            </div>
-            {!lockSchedule && (
+          <fieldset disabled={isReadOnly} className="space-y-5 disabled:opacity-60">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-              <Label>Buffer Minutes</Label>
-              <Input className="mt-1.5" type="number" min="0" value={bufferMinutes} onChange={(event) => { setBufferMinutes(Math.max(0, Number(event.target.value) || 0)); setSelectedSlot(null); }} />
-              </div>
-            )}
-          </div>
-
-          {canEditSchedule && (
-            <>
-              <div>
-                <Label>Specialty</Label>
-                <select
-                  className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={specialty}
-                  onChange={(event) => { setSpecialty(event.target.value); setDoctorId(""); setAppointmentDate(""); setSelectedSlot(null); }}
-                  disabled={isLoadingDoctors}
-                >
-                  <option value="">{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}</option>
-                  {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
+                <Label>Status</Label>
+                <select className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as AppointmentStatus)} disabled={isReadOnly}>
+                  {statuses.filter((item) => item.value !== "All").map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
+                {status === "delayed" && <p className="mt-1 text-xs text-muted-foreground">Delayed appointments are ignored by the scheduling system.</p>}
               </div>
+              {!lockSchedule && !isCompleted && (
+                <div>
+                <Label>Buffer Minutes</Label>
+                <Input className="mt-1.5" type="number" min="0" value={bufferMinutes} onChange={(event) => { setBufferMinutes(Math.max(0, Number(event.target.value) || 0)); setSelectedSlot(null); }} />
+                </div>
+              )}
+            </div>
 
-              <div>
-                <Label>Doctor</Label>
-                {!specialty ? (
-                  <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a specialty to see doctors.</div>
-                ) : filteredDoctors.length === 0 ? (
-                  <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No available doctors found for this specialty.</div>
-                ) : (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {filteredDoctors.map((doctor) => (
-                      <button key={doctor._id} type="button" onClick={() => { setDoctorId(doctor._id); setAppointmentDate(""); setSelectedSlot(null); }} className={cn("flex items-center gap-3 rounded-lg border p-3 text-left transition-all", doctorId === doctor._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
-                        <Avatar initials={getInitials(getDoctorDisplayName(doctor))} />
-                        <div><div className="text-sm font-medium">{getDoctorDisplayName(doctor)}</div><div className="text-xs text-muted-foreground">{doctor.speciality}</div></div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {canEditSchedule && (
+              <>
+                <div>
+                  <Label>Specialty</Label>
+                  <select
+                    className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={specialty}
+                    onChange={(event) => { setSpecialty(event.target.value); setDoctorId(""); setAppointmentDate(""); setSelectedSlot(null); }}
+                    disabled={isLoadingDoctors}
+                  >
+                    <option value="">{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}</option>
+                    {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </div>
 
-              <DateSlotPicker
-                selectedDoctor={selectedDoctor}
-                weekDates={weekDates}
-                weekOffset={weekOffset}
-                appointmentDate={appointmentDate}
-                scheduledDays={scheduledDays}
-                selectedSlot={selectedSlot}
-                availability={availabilityQuery.data}
-                isLoadingSlots={availabilityQuery.isLoading || availabilityQuery.isFetching}
-                slotError={availabilityQuery.isError ? getErrorMessage(availabilityQuery.error) ?? "Unable to load slots." : ""}
-                setWeekOffset={setWeekOffset}
-                setAppointmentDate={setAppointmentDate}
-                setSelectedSlot={setSelectedSlot}
-              />
-            </>
-          )}
+                <div>
+                  <Label>Doctor</Label>
+                  {!specialty ? (
+                    <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a specialty to see doctors.</div>
+                  ) : filteredDoctors.length === 0 ? (
+                    <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No available doctors found for this specialty.</div>
+                  ) : (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {filteredDoctors.map((doctor) => (
+                        <button key={doctor._id} type="button" onClick={() => { setDoctorId(doctor._id); setAppointmentDate(""); setSelectedSlot(null); }} className={cn("flex items-center gap-3 rounded-lg border p-3 text-left transition-all", doctorId === doctor._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
+                          <Avatar initials={getInitials(getDoctorDisplayName(doctor))} />
+                          <div><div className="text-sm font-medium">{getDoctorDisplayName(doctor)}</div><div className="text-xs text-muted-foreground">{doctor.speciality}</div></div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-          <div>
-            <Label>Reason for Visit</Label>
-            <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} />
-          </div>
+                <DateSlotPicker
+                  selectedDoctor={selectedDoctor}
+                  weekDates={weekDates}
+                  weekOffset={weekOffset}
+                  appointmentDate={appointmentDate}
+                  scheduledDays={scheduledDays}
+                  selectedSlot={selectedSlot}
+                  availability={availabilityQuery.data}
+                  isLoadingSlots={availabilityQuery.isLoading || availabilityQuery.isFetching}
+                  slotError={availabilityQuery.isError ? getErrorMessage(availabilityQuery.error) ?? "Unable to load slots." : ""}
+                  setWeekOffset={setWeekOffset}
+                  setAppointmentDate={setAppointmentDate}
+                  setSelectedSlot={setSelectedSlot}
+                />
+              </>
+            )}
+
+            <div>
+              <Label>Reason for Visit</Label>
+              <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} disabled={isReadOnly} />
+            </div>
+          </fieldset>
 
           {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={updateAppointment.isPending || (canEditSchedule && (!doctorId || !appointmentDate))}>{updateAppointment.isPending ? "Saving..." : "Save Changes"}</Button>
+            {isCompleted ? (
+              <>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+                <Button type="button" onClick={() => appointment && onCreateFollowUp?.(appointment)}>Schedule Follow-up</Button>
+              </>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                <Button type="submit" disabled={updateAppointment.isPending || (canEditSchedule && (!doctorId || !appointmentDate || (scheduleFieldsChanged && !selectedSlot)))}>{updateAppointment.isPending ? "Saving..." : "Save Changes"}</Button>
+              </>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
