@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Search, SlidersHorizontal, Eye, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppointments, useMyAppointments, useUpdateAppointment } from "@/hooks/useAppointments";
-import { useDoctors } from "@/hooks/useDoctors";
+import { useAppointments, useDoctorAppointments, useUpdateAppointment } from "@/hooks/useAppointments";
+import { useDoctorProfile, useDoctors } from "@/hooks/useDoctors";
 import { useUser } from "@/hooks/useUser";
 import { Appointment, type AppointmentRecord, type AppointmentSlot, type AppointmentStatus } from "@/services/appointment.service";
 import type { Doctor } from "@/services/doctor.service";
@@ -43,12 +43,14 @@ function AppointmentsList() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<AppointmentRecord | null>(null);
   const [viewing, setViewing] = useState<AppointmentRecord | null>(null);
-  const { user } = useUser();
+  const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
-  const adminAppointments = useAppointments(undefined, !isDoctor);
-  const doctorAppointments = useMyAppointments(undefined, isDoctor);
+  const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(isDoctor ? user?._id : undefined);
+  const adminAppointments = useAppointments(undefined, Boolean(user && !isDoctor));
+  const doctorAppointments = useDoctorAppointments(doctorProfile?._id, undefined, Boolean(user && isDoctor && doctorProfile?._id));
   const activeQuery = isDoctor ? doctorAppointments : adminAppointments;
   const { data: appointments = [], isLoading, isError, refetch } = activeQuery;
+  const isLoadingAppointments = isLoadingUser || (isDoctor && isLoadingDoctorProfile) || isLoading;
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = useMemo(() => {
     return appointments.filter((appointment) => {
@@ -115,7 +117,7 @@ function AppointmentsList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {isLoading ? (
+              {isLoadingAppointments ? (
                 <tr><td colSpan={isDoctor ? 8 : 9} className="py-8 text-center text-muted-foreground">Loading appointments...</td></tr>
               ) : isError ? (
                 <tr><td colSpan={isDoctor ? 8 : 9} className="py-8 text-center text-destructive">Unable to load appointments.</td></tr>

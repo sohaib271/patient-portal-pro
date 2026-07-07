@@ -7,7 +7,8 @@ import { Plus, Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/hooks/useUser";
-import { useMyAppointments } from "@/hooks/useAppointments";
+import { useDoctorAppointments } from "@/hooks/useAppointments";
+import { useDoctorProfile } from "@/hooks/useDoctors";
 import type { AppointmentRecord } from "@/services/appointment.service";
 import { Patient, type PatientRecord } from "@/services/patient.service";
 
@@ -24,13 +25,14 @@ function PatientsLayout() {
 
 function PatientsList() {
   const [query, setQuery] = useState("");
-  const { user } = useUser();
+  const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
-  const { data: doctorAppointments = [], isLoading, isError, refetch } = useMyAppointments(undefined, isDoctor);
+  const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(isDoctor ? user?._id : undefined);
+  const { data: doctorAppointments = [], isLoading, isError, refetch } = useDoctorAppointments(doctorProfile?._id, undefined, Boolean(user && isDoctor && doctorProfile?._id));
   const adminPatientsQuery = useQuery({
     queryKey: ["admin-patients"],
     queryFn: () => Patient.getAllPatients(),
-    enabled: !isDoctor,
+    enabled: Boolean(user && !isDoctor),
   });
   const doctorPatients = useMemo(() => buildDoctorPatients(doctorAppointments), [doctorAppointments]);
   const adminPatients = adminPatientsQuery.data?.patients ?? [];
@@ -87,7 +89,7 @@ function PatientsList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {isLoading ? (
+              {isLoadingUser || isLoadingDoctorProfile || isLoading ? (
                   <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">Loading patients...</td></tr>
                 ) : isError ? (
                   <tr><td colSpan={7} className="py-8 text-center text-destructive">Unable to load your patients.</td></tr>
