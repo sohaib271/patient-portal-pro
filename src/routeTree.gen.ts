@@ -15,6 +15,7 @@ import { Route as PatientsRouteImport } from './routes/patients'
 import { Route as PatientRouteImport } from './routes/patient'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as FollowUpsRouteImport } from './routes/follow-ups'
 import { Route as DoctorsRouteImport } from './routes/doctors'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AppointmentsRouteImport } from './routes/appointments'
@@ -24,6 +25,7 @@ import { Route as PatientDoctorsRouteImport } from './routes/patient.doctors'
 import { Route as PatientDashboardRouteImport } from './routes/patient.dashboard'
 import { Route as PatientBookRouteImport } from './routes/patient.book'
 import { Route as PatientAppointmentsRouteImport } from './routes/patient.appointments'
+import { Route as FollowUpsNewRouteImport } from './routes/follow-ups.new'
 import { Route as DoctorsIdRouteImport } from './routes/doctors.$id'
 import { Route as AppointmentsNewRouteImport } from './routes/appointments.new'
 
@@ -55,6 +57,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowUpsRoute = FollowUpsRouteImport.update({
+  id: '/follow-ups',
+  path: '/follow-ups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DoctorsRoute = DoctorsRouteImport.update({
@@ -102,6 +109,11 @@ const PatientAppointmentsRoute = PatientAppointmentsRouteImport.update({
   path: '/appointments',
   getParentRoute: () => PatientRoute,
 } as any)
+const FollowUpsNewRoute = FollowUpsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => FollowUpsRoute,
+} as any)
 const DoctorsIdRoute = DoctorsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -118,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/appointments': typeof AppointmentsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/doctors': typeof DoctorsRouteWithChildren
+  '/follow-ups': typeof FollowUpsRouteWithChildren
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/patient': typeof PatientRouteWithChildren
@@ -126,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/appointments/new': typeof AppointmentsNewRoute
   '/doctors/$id': typeof DoctorsIdRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/patient/appointments': typeof PatientAppointmentsRoute
   '/patient/book': typeof PatientBookRoute
   '/patient/dashboard': typeof PatientDashboardRoute
@@ -137,6 +151,7 @@ export interface FileRoutesByTo {
   '/appointments': typeof AppointmentsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/doctors': typeof DoctorsRouteWithChildren
+  '/follow-ups': typeof FollowUpsRouteWithChildren
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/patient': typeof PatientRouteWithChildren
@@ -145,6 +160,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/appointments/new': typeof AppointmentsNewRoute
   '/doctors/$id': typeof DoctorsIdRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/patient/appointments': typeof PatientAppointmentsRoute
   '/patient/book': typeof PatientBookRoute
   '/patient/dashboard': typeof PatientDashboardRoute
@@ -157,6 +173,7 @@ export interface FileRoutesById {
   '/appointments': typeof AppointmentsRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/doctors': typeof DoctorsRouteWithChildren
+  '/follow-ups': typeof FollowUpsRouteWithChildren
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/patient': typeof PatientRouteWithChildren
@@ -165,6 +182,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/appointments/new': typeof AppointmentsNewRoute
   '/doctors/$id': typeof DoctorsIdRoute
+  '/follow-ups/new': typeof FollowUpsNewRoute
   '/patient/appointments': typeof PatientAppointmentsRoute
   '/patient/book': typeof PatientBookRoute
   '/patient/dashboard': typeof PatientDashboardRoute
@@ -178,6 +196,7 @@ export interface FileRouteTypes {
     | '/appointments'
     | '/dashboard'
     | '/doctors'
+    | '/follow-ups'
     | '/login'
     | '/notifications'
     | '/patient'
@@ -186,6 +205,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/appointments/new'
     | '/doctors/$id'
+    | '/follow-ups/new'
     | '/patient/appointments'
     | '/patient/book'
     | '/patient/dashboard'
@@ -197,6 +217,7 @@ export interface FileRouteTypes {
     | '/appointments'
     | '/dashboard'
     | '/doctors'
+    | '/follow-ups'
     | '/login'
     | '/notifications'
     | '/patient'
@@ -205,6 +226,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/appointments/new'
     | '/doctors/$id'
+    | '/follow-ups/new'
     | '/patient/appointments'
     | '/patient/book'
     | '/patient/dashboard'
@@ -216,6 +238,7 @@ export interface FileRouteTypes {
     | '/appointments'
     | '/dashboard'
     | '/doctors'
+    | '/follow-ups'
     | '/login'
     | '/notifications'
     | '/patient'
@@ -224,6 +247,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/appointments/new'
     | '/doctors/$id'
+    | '/follow-ups/new'
     | '/patient/appointments'
     | '/patient/book'
     | '/patient/dashboard'
@@ -236,6 +260,7 @@ export interface RootRouteChildren {
   AppointmentsRoute: typeof AppointmentsRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   DoctorsRoute: typeof DoctorsRouteWithChildren
+  FollowUpsRoute: typeof FollowUpsRouteWithChildren
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   PatientRoute: typeof PatientRouteWithChildren
@@ -286,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/follow-ups': {
+      id: '/follow-ups'
+      path: '/follow-ups'
+      fullPath: '/follow-ups'
+      preLoaderRoute: typeof FollowUpsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/doctors': {
@@ -351,6 +383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientAppointmentsRouteImport
       parentRoute: typeof PatientRoute
     }
+    '/follow-ups/new': {
+      id: '/follow-ups/new'
+      path: '/new'
+      fullPath: '/follow-ups/new'
+      preLoaderRoute: typeof FollowUpsNewRouteImport
+      parentRoute: typeof FollowUpsRoute
+    }
     '/doctors/$id': {
       id: '/doctors/$id'
       path: '/$id'
@@ -391,6 +430,18 @@ const DoctorsRouteChildren: DoctorsRouteChildren = {
 const DoctorsRouteWithChildren =
   DoctorsRoute._addFileChildren(DoctorsRouteChildren)
 
+interface FollowUpsRouteChildren {
+  FollowUpsNewRoute: typeof FollowUpsNewRoute
+}
+
+const FollowUpsRouteChildren: FollowUpsRouteChildren = {
+  FollowUpsNewRoute: FollowUpsNewRoute,
+}
+
+const FollowUpsRouteWithChildren = FollowUpsRoute._addFileChildren(
+  FollowUpsRouteChildren,
+)
+
 interface PatientRouteChildren {
   PatientAppointmentsRoute: typeof PatientAppointmentsRoute
   PatientBookRoute: typeof PatientBookRoute
@@ -425,6 +476,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppointmentsRoute: AppointmentsRouteWithChildren,
   DashboardRoute: DashboardRoute,
   DoctorsRoute: DoctorsRouteWithChildren,
+  FollowUpsRoute: FollowUpsRouteWithChildren,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   PatientRoute: PatientRouteWithChildren,

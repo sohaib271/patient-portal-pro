@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppShell, StatusBadge, Avatar } from "@/components/app-shell";
@@ -39,6 +39,7 @@ function AppointmentsLayout() {
 }
 
 function AppointmentsList() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<(typeof statuses)[number]["value"]>("All");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<AppointmentRecord | null>(null);
@@ -162,7 +163,7 @@ function AppointmentsList() {
   lockSchedule={isDoctor}
   onCreateFollowUp={(appointment) => {
     setEditing(null);
-    // e.g. navigate({ to: "/follow-ups/new", search: { appointmentId: appointment._id, patientId: ... } })
+    navigate({ to: "/follow-ups/new", search: { appointmentId: appointment._id } });
   }}
 />
     </AppShell>
