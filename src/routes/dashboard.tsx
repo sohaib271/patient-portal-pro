@@ -16,7 +16,8 @@ import {
   Users,
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
-import { useAppointments } from "@/hooks/useAppointments";
+import { useAppointments, useDoctorAppointments } from "@/hooks/useAppointments";
+import { useDoctorProfile } from "@/hooks/useDoctors";
 import { useMemo, useState } from "react";
 import type { AppointmentRecord } from "@/services/appointment.service";
 
@@ -24,53 +25,6 @@ export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard - MediFlow" }] }),
   component: Dashboard,
 });
-
-const doctorTodaysPatients = [
-  {
-    time: "3:00 PM",
-    initials: "RH",
-    name: "Robert Hayes",
-    id: "P-10091",
-    summary: "Post-bypass annual cardiac assessment",
-    alert: "Post-coronary bypass (2023). On Aspirin and Atorvastatin.",
-    status: "Confirmed",
-  },
-  {
-    time: "9:00 AM",
-    initials: "MT",
-    name: "Michael Thompson",
-    id: "P-10077",
-    summary: "Quarterly cardiology follow-up and ECG review",
-    alert: "Type 2 diabetes. Metformin 1000mg twice daily.",
-    status: "Confirmed",
-  },
-  {
-    time: "9:45 AM",
-    initials: "CH",
-    name: "Courtney Henry",
-    id: "P-10021",
-    summary: "Quarterly cardiology follow-up and ECG review",
-    alert: "",
-    status: "Confirmed",
-  },
-  {
-    time: "9:55 AM",
-    initials: "FM",
-    name: "Floyd Miles",
-    id: "P-10041",
-    summary: "Quarterly cardiology follow-up and ECG review",
-    alert: "",
-    status: "Confirmed",
-  },
-];
-
-const doctorUpcomingAppointments = [
-  { day: "Jun 12", patient: "Dianne Russell", time: "10:30 AM", type: "Cardiology", status: "Scheduled" },
-  { day: "Jun 12", patient: "Courtney Henry", time: "10:55 AM", type: "Cardiology", status: "Scheduled" },
-  { day: "Jun 13", patient: "Jacob Jones", time: "11:25 AM", type: "Follow-up", status: "Scheduled" },
-];
-
-const doctorAlerts = doctorTodaysPatients.filter((patient) => patient.alert);
 
 function Dashboard() {
   const { user } = useUser();
@@ -184,12 +138,36 @@ function AdminDashboard() {
 function DoctorDashboard() {
   const { user } = useUser();
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Savannah";
+  const today = useMemo(() => getPakistanTodayValue(), []);
+  const todayLabel = useMemo(() => formatLongDate(today), [today]);
+  const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(user?.role === "doctor" ? user?._id : undefined);
+  const doctorProfileId = doctorProfile?._id;
+  const { data: rawTodayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useDoctorAppointments(doctorProfileId, today, Boolean(user && user.role === "doctor" && doctorProfileId));
+  const { data: myAppointments = [], isLoading: isLoadingMyAppointments, isError: myAppointmentsError } = useDoctorAppointments(doctorProfileId, undefined, Boolean(user && user.role === "doctor" && doctorProfileId));
+  const todayAppointments = useMemo(
+    () => rawTodayAppointments.filter((appointment) => getAppointmentDateValue(appointment) === today),
+    [rawTodayAppointments, today],
+  );
+  const upcomingAppointments = useMemo(() => {
+    const todayStart = new Date(`${today}T00:00:00+05:00`).getTime();
+    const nextSevenDaysEnd = todayStart + 8 * 24 * 60 * 60 * 1000;
+    return myAppointments
+      .filter((appointment) => {
+        if (["completed", "cancelled", "delayed"].includes(appointment.status ?? "")) return false;
+        const appointmentTime = new Date(appointment.estimatedTurnTime ?? appointment.appointmentDate).getTime();
+        return appointmentTime >= Date.now() && appointmentTime < nextSevenDaysEnd;
+      })
+      .sort((a, b) => new Date(a.estimatedTurnTime ?? a.appointmentDate).getTime() - new Date(b.estimatedTurnTime ?? b.appointmentDate).getTime());
+  }, [myAppointments, today]);
+  const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed").length;
+  const remainingToday = todayAppointments.filter((appointment) => !["completed", "cancelled"].includes(appointment.status ?? "")).length;
+  const activePatientCount = new Set(myAppointments.map((appointment) => getPatientObject(appointment)?._id).filter(Boolean)).size;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Good morning, Dr. {displayName}</h1>
-        <p className="text-sm text-muted-foreground">Wednesday, June 10, 2026 - Here's what's happening today.</p>
+        <p className="text-sm text-muted-foreground">{todayLabel} - Here's what's happening today.</p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -219,29 +197,31 @@ function DoctorDashboard() {
           <Card className="p-5">
             <div className="mb-4">
               <h3 className="text-sm font-semibold">Today's Patients</h3>
-              <p className="text-xs text-muted-foreground">4 scheduled for today</p>
+              <p className="text-xs text-muted-foreground">{todayAppointments.length} visited clinic today</p>
             </div>
             <div className="divide-y divide-border">
-              {doctorTodaysPatients.map((patient) => (
-                <div key={`${patient.id}-${patient.time}`} className="grid gap-3 py-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+              {isLoadingDoctorProfile || isLoadingTodayAppointments ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Loading today's patients...</div>
+              ) : todayAppointmentsError ? (
+                <div className="py-8 text-center text-sm text-destructive">Unable to load today's patients.</div>
+              ) : todayAppointments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">No patients visited today.</div>
+              ) : todayAppointments.map((appointment) => (
+                <div key={appointment._id} className="grid gap-3 py-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
                   <div className="w-14 rounded-lg bg-muted px-2 py-1.5 text-center">
-                    <div className="text-sm font-bold leading-tight">{patient.time.split(" ")[0]}</div>
-                    <div className="text-[10px] text-muted-foreground">{patient.time.split(" ")[1]}</div>
+                    <div className="text-sm font-bold leading-tight">{getAppointmentTimeParts(appointment).time}</div>
+                    <div className="text-[10px] text-muted-foreground">{getAppointmentTimeParts(appointment).period}</div>
                   </div>
                   <div className="flex min-w-0 items-start gap-3">
-                    <Avatar initials={patient.initials} />
+                    <Avatar initials={getInitials(getPatientName(appointment))} />
                     <div className="min-w-0">
-                      <div className="font-medium leading-tight">{patient.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">{patient.id} - {patient.summary}</div>
-                      {patient.alert && (
-                        <div className="mt-1 inline-flex max-w-full rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">
-                          <span className="truncate">{patient.alert}</span>
-                        </div>
-                      )}
+                      <div className="font-medium leading-tight">{getPatientName(appointment)}</div>
+                      <div className="truncate text-xs text-muted-foreground">{getPatientCode(appointment)} - {getCheckupName(appointment)}</div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{getPatientContact(appointment)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-                    <StatusBadge status={patient.status} />
+                    <StatusBadge status={formatStatus(appointment.status)} />
                     <Link to="/patients" className="text-xs font-medium text-primary hover:underline">View Details</Link>
                   </div>
                 </div>
@@ -255,14 +235,20 @@ function DoctorDashboard() {
               <p className="text-xs text-muted-foreground">Next 7 days</p>
             </div>
             <div className="divide-y divide-border">
-              {doctorUpcomingAppointments.map((appointment) => (
-                <div key={`${appointment.day}-${appointment.patient}`} className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 py-3">
-                  <div className="rounded-lg bg-primary-soft px-2 py-1 text-center text-xs font-semibold text-primary">{appointment.day}</div>
+              {isLoadingDoctorProfile || isLoadingMyAppointments ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Loading upcoming appointments...</div>
+              ) : myAppointmentsError ? (
+                <div className="py-8 text-center text-sm text-destructive">Unable to load upcoming appointments.</div>
+              ) : upcomingAppointments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">No upcoming appointments found.</div>
+              ) : upcomingAppointments.slice(0, 6).map((appointment) => (
+                <div key={appointment._id} className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 py-3">
+                  <div className="rounded-lg bg-primary-soft px-2 py-1 text-center text-xs font-semibold text-primary">{getShortDateLabel(appointment)}</div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{appointment.patient}</div>
-                    <div className="truncate text-xs text-muted-foreground">{appointment.time} - {appointment.type}</div>
+                    <div className="truncate text-sm font-medium">{getPatientName(appointment)}</div>
+                    <div className="truncate text-xs text-muted-foreground">{getAppointmentTimeLabel(appointment)} - {getSpecialty(appointment)}</div>
                   </div>
-                  <StatusBadge status={appointment.status} />
+                  <StatusBadge status={formatStatus(appointment.status)} />
                 </div>
               ))}
             </div>
@@ -270,19 +256,23 @@ function DoctorDashboard() {
         </div>
 
         <div className="space-y-4">
-          <StatCard icon={CalendarDays} title="Today's Appointments" value={6} a={{ label: "Completed", value: 2 }} b={{ label: "Remaining", value: 6 }} />
-          <StatCard icon={Users} title="Patients" value={84} a={{ label: "Registered this Month", value: 21 }} b={{ label: "Older than one month", value: 63 }} />
-          <StatCard icon={CalendarCheck} title="Expected Appointments" value={15} a={{ label: "Expected Today", value: "" }} b={{ label: "Next 7 Days", value: 174 }} />
+          <StatCard icon={CalendarDays} title="Today's Appointments" value={todayAppointments.length} a={{ label: "Completed", value: completedToday }} b={{ label: "Remaining", value: remainingToday }} />
+          <StatCard icon={Users} title="Patients" value={activePatientCount} a={{ label: "Visited Today", value: todayAppointments.length }} b={{ label: "With Appointments", value: activePatientCount }} />
+          <StatCard icon={CalendarCheck} title="Expected Appointments" value={upcomingAppointments.length} a={{ label: "Expected Today", value: remainingToday }} b={{ label: "Next 7 Days", value: upcomingAppointments.length }} />
 
           <Card className="p-5">
             <h3 className="mb-3 text-sm font-semibold">Today's Patient Alerts</h3>
             <div className="space-y-2">
-              {doctorAlerts.map((alert) => (
-                <div key={alert.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <div className="text-xs font-semibold text-amber-900">{alert.name}</div>
-                  <p className="mt-1 text-xs leading-relaxed text-amber-800">{alert.alert}</p>
-                </div>
-              ))}
+              {todayAppointments.filter((appointment) => appointment.status === "delayed" || appointment.status === "cancelled").length === 0 ? (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">No appointment alerts for today.</div>
+              ) : todayAppointments
+                .filter((appointment) => appointment.status === "delayed" || appointment.status === "cancelled")
+                .map((appointment) => (
+                  <div key={appointment._id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900">{getPatientName(appointment)}</div>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800">Appointment is {formatStatus(appointment.status).toLowerCase()}.</p>
+                  </div>
+                ))}
             </div>
           </Card>
         </div>
@@ -320,13 +310,17 @@ function buildDoctorStats(appointments: AppointmentRecord[]) {
 }
 
 function getPatientName(appointment: AppointmentRecord) {
-  const patient = typeof appointment.patientId === "object" ? appointment.patientId : undefined;
+  const patient = getPatientObject(appointment);
   return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Unnamed Patient";
 }
 
 function getPatientCode(appointment: AppointmentRecord) {
-  const patient = typeof appointment.patientId === "object" ? appointment.patientId : undefined;
+  const patient = getPatientObject(appointment);
   return patient?.patientId ?? appointment._id.slice(-6).toUpperCase();
+}
+
+function getPatientObject(appointment: AppointmentRecord) {
+  return typeof appointment.patientId === "object" ? appointment.patientId : undefined;
 }
 
 function getDoctorId(appointment: AppointmentRecord) {
@@ -346,6 +340,16 @@ function getSpecialty(appointment: AppointmentRecord) {
   return doctor?.speciality ?? checkup?.specialityRequired ?? "No specialty";
 }
 
+function getCheckupName(appointment: AppointmentRecord) {
+  const checkup = typeof appointment.checkupId === "object" ? appointment.checkupId : undefined;
+  return checkup?.name ?? getSpecialty(appointment);
+}
+
+function getPatientContact(appointment: AppointmentRecord) {
+  const contact = typeof appointment.contactId === "object" ? appointment.contactId : undefined;
+  return contact?.phone || contact?.whatsappNo || contact?.email || "No contact saved";
+}
+
 function getAppointmentTimeLabel(appointment: AppointmentRecord) {
   if (appointment.status === "delayed") return "N/A";
   if (!appointment.estimatedTurnTime) return "-";
@@ -354,6 +358,38 @@ function getAppointmentTimeLabel(appointment: AppointmentRecord) {
     minute: "2-digit",
     timeZone: "Asia/Karachi",
   });
+}
+
+function getAppointmentTimeParts(appointment: AppointmentRecord) {
+  const label = getAppointmentTimeLabel(appointment);
+  const [time = "-", period = ""] = label.split(" ");
+  return { time, period };
+}
+
+function getShortDateLabel(appointment: AppointmentRecord) {
+  return new Date(appointment.estimatedTurnTime ?? appointment.appointmentDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Karachi",
+  });
+}
+
+function getAppointmentDateValue(appointment: AppointmentRecord) {
+  const value = appointment.estimatedTurnTime ?? appointment.appointmentDate;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Karachi",
+  }).formatToParts(new Date(value));
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  return `${year}-${month}-${day}`;
+}
+
+function getInitials(name: string) {
+  return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "PT";
 }
 
 function formatStatus(status?: string) {
