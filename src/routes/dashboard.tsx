@@ -1,67 +1,112 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AppShell, StatusBadge } from "@/components/app-shell";
+import { AppShell, StatusBadge, Avatar } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, UserPlus, CalendarCheck, Users, Stethoscope, CalendarRange, TrendingUp, Search } from "lucide-react";
-import { appointments } from "@/lib/mock-data";
+import {
+  CalendarCheck,
+  CalendarDays,
+  CalendarPlus,
+  CalendarRange,
+  ClipboardPenLine,
+  Plus,
+  Search,
+  Stethoscope,
+  TrendingUp,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { useUser } from "@/hooks/useUser";
+import { useAppointments } from "@/hooks/useAppointments";
+import { useMemo, useState } from "react";
+import type { AppointmentRecord } from "@/services/appointment.service";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard — MediFlow" }] }),
+  head: () => ({ meta: [{ title: "Dashboard - MediFlow" }] }),
   component: Dashboard,
 });
 
-function StatCard({
-  icon: Icon,
-  title,
-  value,
-  a,
-  b,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  value: string | number;
-  a: { label: string; value: string | number };
-  b: { label: string; value: string | number };
-}) {
-  return (
-    <Card className="p-5 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between">
-        <span className="text-sm font-medium text-muted-foreground">{title}</span>
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary">
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-      <div className="mt-3 text-3xl font-bold tracking-tight">{value}</div>
-      <div className="mt-4 flex items-center justify-between text-xs">
-        <div>
-          <div className="text-muted-foreground">{a.label}</div>
-          <div className="font-semibold text-foreground">{a.value}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-muted-foreground">{b.label}</div>
-          <div className="font-semibold text-foreground">{b.value}</div>
-        </div>
-      </div>
-    </Card>
-  );
-}
+const doctorTodaysPatients = [
+  {
+    time: "3:00 PM",
+    initials: "RH",
+    name: "Robert Hayes",
+    id: "P-10091",
+    summary: "Post-bypass annual cardiac assessment",
+    alert: "Post-coronary bypass (2023). On Aspirin and Atorvastatin.",
+    status: "Confirmed",
+  },
+  {
+    time: "9:00 AM",
+    initials: "MT",
+    name: "Michael Thompson",
+    id: "P-10077",
+    summary: "Quarterly cardiology follow-up and ECG review",
+    alert: "Type 2 diabetes. Metformin 1000mg twice daily.",
+    status: "Confirmed",
+  },
+  {
+    time: "9:45 AM",
+    initials: "CH",
+    name: "Courtney Henry",
+    id: "P-10021",
+    summary: "Quarterly cardiology follow-up and ECG review",
+    alert: "",
+    status: "Confirmed",
+  },
+  {
+    time: "9:55 AM",
+    initials: "FM",
+    name: "Floyd Miles",
+    id: "P-10041",
+    summary: "Quarterly cardiology follow-up and ECG review",
+    alert: "",
+    status: "Confirmed",
+  },
+];
+
+const doctorUpcomingAppointments = [
+  { day: "Jun 12", patient: "Dianne Russell", time: "10:30 AM", type: "Cardiology", status: "Scheduled" },
+  { day: "Jun 12", patient: "Courtney Henry", time: "10:55 AM", type: "Cardiology", status: "Scheduled" },
+  { day: "Jun 13", patient: "Jacob Jones", time: "11:25 AM", type: "Follow-up", status: "Scheduled" },
+];
+
+const doctorAlerts = doctorTodaysPatients.filter((patient) => patient.alert);
 
 function Dashboard() {
   const { user } = useUser();
+  if (user?.role === "doctor") return <DoctorDashboard />;
+  return <AdminDashboard />;
+}
+
+function AdminDashboard() {
+  const { user } = useUser();
+  const [appointmentQuery, setAppointmentQuery] = useState("");
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
-  const docs: { name: string; count: string; tone: string }[] = [
-    { name: "Dr. James Brown", count: "32 / 43", tone: "bg-amber-50 text-amber-700 ring-amber-200" },
-    { name: "Dr. James Brown", count: "27 / 38", tone: "bg-rose-50 text-rose-700 ring-rose-200" },
-    { name: "Dr. Emily Lopez", count: "21 / 25", tone: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-    { name: "Dr. Amanda John", count: "2 / 18", tone: "bg-sky-50 text-sky-700 ring-sky-200" },
-    { name: "Dr. Sarah Mitchell", count: "2 / 4", tone: "bg-violet-50 text-violet-700 ring-violet-200" },
-  ];
+  const today = useMemo(() => getPakistanTodayValue(), []);
+  const todayLabel = useMemo(() => formatLongDate(today), [today]);
+  const { data: todayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useAppointments(today);
+  const normalizedAppointmentQuery = appointmentQuery.trim().toLowerCase();
+  const filteredTodayAppointments = useMemo(() => {
+    return todayAppointments.filter((appointment) => {
+      const text = [
+        getPatientName(appointment),
+        getPatientCode(appointment),
+        getDoctorName(appointment),
+        getSpecialty(appointment),
+        appointment._id,
+      ].join(" ").toLowerCase();
+      return !normalizedAppointmentQuery || text.includes(normalizedAppointmentQuery);
+    });
+  }, [normalizedAppointmentQuery, todayAppointments]);
+  const doctorStats = useMemo(() => buildDoctorStats(todayAppointments), [todayAppointments]);
+  const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed").length;
+  const remainingToday = todayAppointments.filter((appointment) => !["completed", "cancelled"].includes(appointment.status ?? "")).length;
+
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Good morning, {displayName}</h1>
-        <p className="text-sm text-muted-foreground">Wednesday, June 10, 2026 — Here's what's happening today.</p>
+        <p className="text-sm text-muted-foreground">{todayLabel} - Here's what's happening today.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -72,7 +117,7 @@ function Dashboard() {
               <Link to="/appointments/new" className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5">
                 <Plus className="mb-6 h-6 w-6" />
                 <div className="font-semibold">Book a New Appointment</div>
-                <div className="text-xs opacity-90">5 appointments scheduled for today</div>
+                <div className="text-xs opacity-90">{todayAppointments.length} appointments scheduled for today</div>
                 <CalendarCheck className="absolute -right-2 -bottom-2 h-20 w-20 opacity-10" />
               </Link>
               <Link to="/patients" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
@@ -90,29 +135,35 @@ function Dashboard() {
             <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h3 className="text-sm font-semibold">Today's Appointments</h3>
-                <p className="text-xs text-muted-foreground">5 appointments scheduled</p>
+                <p className="text-xs text-muted-foreground">{todayAppointments.length} appointments scheduled</p>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search by name or ID..." className="pl-9 h-9 w-56" />
+                <Input value={appointmentQuery} onChange={(event) => setAppointmentQuery(event.target.value)} placeholder="Search by name or ID..." className="pl-9 h-9 w-56" />
               </div>
             </div>
             <div className="mb-4 flex flex-wrap gap-2">
-              {docs.map((d, i) => (
-                <span key={i} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${d.tone}`}>
-                  {d.name} <span className="opacity-70">{d.count}</span>
+              {doctorStats.map((doctor, index) => (
+                <span key={index} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${doctor.tone}`}>
+                  {doctor.name} <span className="opacity-70">{doctor.count}</span>
                 </span>
               ))}
             </div>
             <div className="divide-y divide-border">
-              {appointments.slice(0, 5).map((a) => (
-                <div key={a.id} className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-3 py-3">
-                  <div className="text-sm font-medium text-muted-foreground">{a.time}</div>
+              {isLoadingTodayAppointments ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Loading today's appointments...</div>
+              ) : todayAppointmentsError ? (
+                <div className="py-8 text-center text-sm text-destructive">Unable to load today's appointments.</div>
+              ) : filteredTodayAppointments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">No appointments found for today.</div>
+              ) : filteredTodayAppointments.slice(0, 6).map((appointment) => (
+                <div key={appointment._id} className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-3 py-3">
+                  <div className="text-sm font-medium text-muted-foreground">{getAppointmentTimeLabel(appointment)}</div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{a.patient}</div>
-                    <div className="truncate text-xs text-muted-foreground">{a.id} · Dr. {a.doctor.split(" ").slice(-1)} · {a.specialty}</div>
+                    <div className="truncate text-sm font-semibold">{getPatientName(appointment)}</div>
+                    <div className="truncate text-xs text-muted-foreground">{getPatientCode(appointment)} - {getDoctorName(appointment)} - {getSpecialty(appointment)}</div>
                   </div>
-                  <StatusBadge status={a.status} />
+                  <StatusBadge status={formatStatus(appointment.status)} />
                 </div>
               ))}
             </div>
@@ -120,12 +171,250 @@ function Dashboard() {
         </div>
 
         <div className="space-y-4">
-          <StatCard icon={CalendarCheck} title="Today's Appointments" value={24} a={{ label: "Completed", value: 14 }} b={{ label: "Remaining", value: 10 }} />
+          <StatCard icon={CalendarCheck} title="Today's Appointments" value={todayAppointments.length} a={{ label: "Completed", value: completedToday }} b={{ label: "Remaining", value: remainingToday }} />
           <StatCard icon={Users} title="Patients" value={1740} a={{ label: "Registered this Month", value: 140 }} b={{ label: "Older than 1 month", value: 1600 }} />
           <StatCard icon={Stethoscope} title="Doctors" value={15} a={{ label: "Available Today", value: 14 }} b={{ label: "Unavailable", value: "01" }} />
           <StatCard icon={TrendingUp} title="Follow-up Checkups" value="82%" a={{ label: "Expected", value: 100 }} b={{ label: "Confirmed", value: 82 }} />
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function DoctorDashboard() {
+  const { user } = useUser();
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Savannah";
+
+  return (
+    <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Good morning, Dr. {displayName}</h1>
+        <p className="text-sm text-muted-foreground">Wednesday, June 10, 2026 - Here's what's happening today.</p>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
+          <Card className="overflow-hidden p-5">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">Quick Actions</h3>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.9fr)]">
+              <Link to="/doctors" className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5">
+                <ClipboardPenLine className="mb-6 h-6 w-6" />
+                <div className="font-semibold">Edit Your Schedule</div>
+                <div className="text-xs opacity-90">Click here to update your schedule</div>
+                <CalendarCheck className="absolute -right-2 -bottom-2 h-20 w-20 opacity-10" />
+              </Link>
+              <div className="grid gap-3">
+                <Link to="/appointments/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-4 w-4" /></div>
+                  <div className="text-sm font-medium">Book a New Appointment</div>
+                </Link>
+                <Link to="/patients" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><UserPlus className="h-4 w-4" /></div>
+                  <div className="text-sm font-medium">Register a New Patient</div>
+                </Link>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold">Today's Patients</h3>
+              <p className="text-xs text-muted-foreground">4 scheduled for today</p>
+            </div>
+            <div className="divide-y divide-border">
+              {doctorTodaysPatients.map((patient) => (
+                <div key={`${patient.id}-${patient.time}`} className="grid gap-3 py-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+                  <div className="w-14 rounded-lg bg-muted px-2 py-1.5 text-center">
+                    <div className="text-sm font-bold leading-tight">{patient.time.split(" ")[0]}</div>
+                    <div className="text-[10px] text-muted-foreground">{patient.time.split(" ")[1]}</div>
+                  </div>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Avatar initials={patient.initials} />
+                    <div className="min-w-0">
+                      <div className="font-medium leading-tight">{patient.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">{patient.id} - {patient.summary}</div>
+                      {patient.alert && (
+                        <div className="mt-1 inline-flex max-w-full rounded-md bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">
+                          <span className="truncate">{patient.alert}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                    <StatusBadge status={patient.status} />
+                    <Link to="/patients" className="text-xs font-medium text-primary hover:underline">View Details</Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold">Upcoming Appointments</h3>
+              <p className="text-xs text-muted-foreground">Next 7 days</p>
+            </div>
+            <div className="divide-y divide-border">
+              {doctorUpcomingAppointments.map((appointment) => (
+                <div key={`${appointment.day}-${appointment.patient}`} className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 py-3">
+                  <div className="rounded-lg bg-primary-soft px-2 py-1 text-center text-xs font-semibold text-primary">{appointment.day}</div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{appointment.patient}</div>
+                    <div className="truncate text-xs text-muted-foreground">{appointment.time} - {appointment.type}</div>
+                  </div>
+                  <StatusBadge status={appointment.status} />
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <StatCard icon={CalendarDays} title="Today's Appointments" value={6} a={{ label: "Completed", value: 2 }} b={{ label: "Remaining", value: 6 }} />
+          <StatCard icon={Users} title="Patients" value={84} a={{ label: "Registered this Month", value: 21 }} b={{ label: "Older than one month", value: 63 }} />
+          <StatCard icon={CalendarCheck} title="Expected Appointments" value={15} a={{ label: "Expected Today", value: "" }} b={{ label: "Next 7 Days", value: 174 }} />
+
+          <Card className="p-5">
+            <h3 className="mb-3 text-sm font-semibold">Today's Patient Alerts</h3>
+            <div className="space-y-2">
+              {doctorAlerts.map((alert) => (
+                <div key={alert.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-xs font-semibold text-amber-900">{alert.name}</div>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-800">{alert.alert}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function buildDoctorStats(appointments: AppointmentRecord[]) {
+  const tones = [
+    "bg-amber-50 text-amber-700 ring-amber-200",
+    "bg-rose-50 text-rose-700 ring-rose-200",
+    "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    "bg-sky-50 text-sky-700 ring-sky-200",
+    "bg-violet-50 text-violet-700 ring-violet-200",
+  ];
+  const counts = new Map<string, { name: string; total: number; completed: number }>();
+
+  appointments.forEach((appointment) => {
+    const doctorId = getDoctorId(appointment) || getDoctorName(appointment);
+    const current = counts.get(doctorId) ?? { name: getDoctorName(appointment), total: 0, completed: 0 };
+    current.total += 1;
+    if (appointment.status === "completed") current.completed += 1;
+    counts.set(doctorId, current);
+  });
+
+  return Array.from(counts.values())
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5)
+    .map((item, index) => ({
+      name: item.name,
+      count: `${item.completed} / ${item.total}`,
+      tone: tones[index % tones.length],
+    }));
+}
+
+function getPatientName(appointment: AppointmentRecord) {
+  const patient = typeof appointment.patientId === "object" ? appointment.patientId : undefined;
+  return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Unnamed Patient";
+}
+
+function getPatientCode(appointment: AppointmentRecord) {
+  const patient = typeof appointment.patientId === "object" ? appointment.patientId : undefined;
+  return patient?.patientId ?? appointment._id.slice(-6).toUpperCase();
+}
+
+function getDoctorId(appointment: AppointmentRecord) {
+  return typeof appointment.doctorId === "object" ? appointment.doctorId._id : appointment.doctorId ?? "";
+}
+
+function getDoctorName(appointment: AppointmentRecord) {
+  const doctor = typeof appointment.doctorId === "object" ? appointment.doctorId : undefined;
+  const doctorUser = typeof doctor?.userId === "object" ? doctor.userId : undefined;
+  const name = [doctorUser?.firstName, doctorUser?.lastName].filter(Boolean).join(" ");
+  return name ? `Dr. ${name}` : "Unassigned Doctor";
+}
+
+function getSpecialty(appointment: AppointmentRecord) {
+  const doctor = typeof appointment.doctorId === "object" ? appointment.doctorId : undefined;
+  const checkup = typeof appointment.checkupId === "object" ? appointment.checkupId : undefined;
+  return doctor?.speciality ?? checkup?.specialityRequired ?? "No specialty";
+}
+
+function getAppointmentTimeLabel(appointment: AppointmentRecord) {
+  if (appointment.status === "delayed") return "N/A";
+  if (!appointment.estimatedTurnTime) return "-";
+  return new Date(appointment.estimatedTurnTime).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Karachi",
+  });
+}
+
+function formatStatus(status?: string) {
+  if (!status) return "Pending";
+  return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getPakistanTodayValue() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Karachi",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+  return `${year}-${month}-${day}`;
+}
+
+function formatLongDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function StatCard({
+  icon: Icon,
+  title,
+  value,
+  a,
+  b,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  value: string | number;
+  a: { label: string; value: string | number };
+  b: { label: string; value: string | number };
+}) {
+  return (
+    <Card className="p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <div className="mt-3 text-3xl font-bold tracking-tight">{value}</div>
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+        <div>
+          <div className="text-muted-foreground">{a.label}</div>
+          {a.value !== "" && <div className="font-semibold text-foreground">{a.value}</div>}
+        </div>
+        <div className="text-right">
+          <div className="text-muted-foreground">{b.label}</div>
+          <div className="font-semibold text-foreground">{b.value}</div>
+        </div>
+      </div>
+    </Card>
   );
 }

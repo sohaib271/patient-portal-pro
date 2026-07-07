@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { useCreateDoctor, useDoctors, useUpdateDoctor } from "@/hooks/useDoctors";
+import { CalendarClock, Clock, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useCreateDoctor, useDoctorProfile, useDoctors, useUpdateDoctor } from "@/hooks/useDoctors";
+import { useUser } from "@/hooks/useUser";
 import type { Doctor, DoctorSchedule, DoctorUser } from "@/services/doctor.service";
 
 export const Route = createFileRoute("/doctors")({
@@ -30,7 +31,10 @@ function DoctorsLayout() {
 
 function DoctorsList() {
   const [query, setQuery] = useState("");
+  const { user } = useUser();
   const { data: doctors = [], isLoading, isError } = useDoctors();
+
+  if (user?.role === "doctor") return <MySchedulePage userId={user._id} />;
 
   const filteredDoctors = doctors.filter((doctor) => {
     const user = getDoctorUser(doctor);
@@ -120,6 +124,164 @@ function DoctorsList() {
   );
 }
 
+function MySchedulePage({ userId }: { userId: string }) {
+  const { data: doctor, isLoading, isError } = useDoctorProfile(userId);
+  const updateDoctor = useUpdateDoctor();
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState({ speciality: "", averageCheckUpTime: "15", isAvailable: true });
+  const [schedule, setSchedule] = useState<DoctorSchedule[]>([{ day: "Monday", startTime: "09:00", endTime: "17:00" }]);
+
+  useEffect(() => {
+    if (!doctor) return;
+    setForm({
+      speciality: doctor.speciality,
+      averageCheckUpTime: String(doctor.averageCheckupTime),
+      isAvailable: doctor.isAvailable !== false,
+    });
+    setSchedule(doctor.schedule?.length ? doctor.schedule : [{ day: "Monday", startTime: "09:00", endTime: "17:00" }]);
+    setError("");
+    setSaved(false);
+  }, [doctor]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!doctor) return;
+    setError("");
+    setSaved(false);
+
+    try {
+      await updateDoctor.mutateAsync({
+        userId,
+        data: {
+          speciality: form.speciality.trim(),
+          averageCheckUpTime: Number(form.averageCheckUpTime),
+          isAvailable: form.isAvailable,
+        },
+        schedule,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(getErrorMessage(err) ?? "Unable to update schedule.");
+    }
+  };
+
+  const updateSchedule = (index: number, patch: Partial<DoctorSchedule>) => {
+    setSchedule((current) => current.map((slot, i) => (i === index ? { ...slot, ...patch } : slot)));
+    setSaved(false);
+  };
+
+  const removeSchedule = (index: number) => {
+    setSchedule((current) => current.filter((_, i) => i !== index));
+    setSaved(false);
+  };
+
+  return (
+    <AppShell breadcrumbs={[{ label: "Dashboard", to: "/dashboard" }, { label: "My Schedule" }]}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">My Schedule</h1>
+        <p className="text-sm text-muted-foreground">Review your doctor profile and update your appointment availability.</p>
+      </div>
+
+      {isLoading ? (
+        <Card className="p-8 text-center text-muted-foreground">Loading your schedule...</Card>
+      ) : isError || !doctor ? (
+        <Card className="p-8 text-center text-destructive">Unable to load your doctor profile.</Card>
+      ) : (
+        <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <Card className="p-5">
+            <div className="flex items-center gap-3">
+              <Avatar initials={getInitials(getDoctorName(doctor))} />
+              <div className="min-w-0">
+                <div className="truncate text-base font-semibold">{getDoctorName(doctor)}</div>
+                <div className="truncate text-xs text-muted-foreground">{getDoctorUser(doctor)?.email ?? "No email"}</div>
+              </div>
+            </div>
+            <dl className="mt-5 space-y-3 text-sm">
+              <InfoRow label="Specialty" value={doctor.speciality} />
+              <InfoRow label="Checkup Time" value={`${doctor.averageCheckupTime} min`} />
+              <InfoRow label="Status" value={doctor.isAvailable === false ? "Inactive" : "Available"} />
+              <InfoRow label="Phone" value={getDoctorUser(doctor)?.phone ?? "-"} />
+            </dl>
+          </Card>
+
+          <Card className="p-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">Schedule Details</h2>
+                <p className="text-sm text-muted-foreground">Changes here control your bookable appointment slots.</p>
+              </div>
+              <StatusBadge status={form.isAvailable ? "Available" : "Inactive"} />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Specialty" value={form.speciality} onChange={(speciality) => { setForm({ ...form, speciality }); setSaved(false); }} required />
+              <Field label="Average checkup time (minutes)" type="number" min="1" value={form.averageCheckUpTime} onChange={(averageCheckUpTime) => { setForm({ ...form, averageCheckUpTime }); setSaved(false); }} required />
+            </div>
+
+            <label className="mt-4 flex items-center gap-3 rounded-lg border border-border p-3 text-sm">
+              <input type="checkbox" checked={form.isAvailable} onChange={(event) => { setForm({ ...form, isAvailable: event.target.checked }); setSaved(false); }} />
+              <span>
+                <span className="block font-medium">Available for appointments</span>
+                <span className="text-xs text-muted-foreground">Turn this off when patients should not be able to book you.</span>
+              </span>
+            </label>
+
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Weekly Schedule</Label>
+                  <div className="mt-1 text-xs text-muted-foreground">{schedule.length} active day(s)</div>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => { setSchedule([...schedule, { day: getNextAvailableDay(schedule), startTime: "09:00", endTime: "17:00" }]); setSaved(false); }}>
+                  <Plus className="h-4 w-4" /> Add day
+                </Button>
+              </div>
+
+              {schedule.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No schedule days selected.</div>
+              ) : (
+                schedule.map((slot, index) => (
+                  <div key={`${slot.day}-${index}`} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_130px_130px_auto]">
+                    <div>
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><CalendarClock className="h-3.5 w-3.5" /> Day</div>
+                      <select value={slot.day} onChange={(event) => updateSchedule(index, { day: event.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                        {days.map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="h-3.5 w-3.5" /> Start</div>
+                      <Input type="time" value={slot.startTime} onChange={(event) => updateSchedule(index, { startTime: event.target.value })} required />
+                    </div>
+                    <div>
+                      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="h-3.5 w-3.5" /> End</div>
+                      <Input type="time" value={slot.endTime} onChange={(event) => updateSchedule(index, { endTime: event.target.value })} required />
+                    </div>
+                    <div className="flex items-end">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeSchedule(index)} aria-label={`Remove ${slot.day}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {error && <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+            {saved && <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Schedule updated successfully.</div>}
+
+            <div className="mt-5 flex justify-end">
+              <Button type="submit" disabled={updateDoctor.isPending || schedule.length === 0}>
+                {updateDoctor.isPending ? "Saving..." : "Save Schedule"}
+              </Button>
+            </div>
+          </Card>
+        </form>
+      )}
+    </AppShell>
+  );
+}
+
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function getDoctorUser(doctor: Doctor): DoctorUser | undefined {
@@ -137,6 +299,28 @@ function getDoctorName(doctor: Doctor) {
 
 function getInitials(name: string) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "DR";
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function getNextAvailableDay(schedule: DoctorSchedule[]) {
+  return days.find((day) => !schedule.some((slot) => slot.day === day)) ?? "Monday";
+}
+
+function getErrorMessage(err: unknown) {
+  if (typeof err === "object" && err && "response" in err) {
+    const response = (err as { response?: { data?: { message?: string | string[] } } }).response;
+    const message = response?.data?.message;
+    return Array.isArray(message) ? message.join(", ") : message;
+  }
+  return undefined;
 }
 
 function AddDoctorDialog() {

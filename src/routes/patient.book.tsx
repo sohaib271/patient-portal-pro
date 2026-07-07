@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Users, User as UserIcon, HeartHandshake } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, ArrowRight, Bell, CheckCircle2, ChevronLeft, ChevronRight, Users, User as UserIcon, HeartHandshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePatientRelatives } from "@/hooks/usePatientRelatives";
 import { useUser } from "@/hooks/useUser";
@@ -18,6 +19,17 @@ import type { Doctor } from "@/services/doctor.service";
 import type { PatientWithPhone } from "@/services/patient.service";
 
 const MAX_BOOKING_WEEK_OFFSET = 7;
+const REMINDER_OPTIONS = [
+  { value: 15, label: "15 Minutes Before" },
+  { value: 30, label: "30 Minutes Before" },
+  { value: 60, label: "1 Hour Before" },
+  { value: 1440, label: "1 Day Before" },
+];
+const NOTIFICATION_CHANNEL_OPTIONS = [
+  { value: "sms", label: "SMS" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "email", label: "Email" },
+];
 
 export const Route = createFileRoute("/patient/book")({
   head: () => ({ meta: [{ title: "Book Appointment — MediFlow" }] }),
@@ -43,6 +55,8 @@ function PatientBook() {
   const [appointmentDate, setAppointmentDate] = useState("");
   const [availability, setAvailability] = useState<DoctorAvailability | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null);
+  const [patientReminderMinutes, setPatientReminderMinutes] = useState(60);
+  const [notificationChannels, setNotificationChannels] = useState<string[]>(["email"]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotError, setSlotError] = useState("");
   const [bookingError, setBookingError] = useState("");
@@ -161,7 +175,8 @@ function PatientBook() {
         reasonForVisit: reasonForVisit.trim(),
         appointmentDate,
         appointmentTime: selectedSlot.time,
-        patientReminderMinutes: 60,
+        patientReminderMinutes,
+        notificationChannel: notificationChannels,
         bufferMinutes: 5,
       });
 
@@ -343,7 +358,7 @@ function PatientBook() {
           <div className="space-y-5 animate-in fade-in duration-300">
             <div>
               <h2 className="text-base font-semibold">Appointment Details</h2>
-              <p className="text-sm text-muted-foreground">Choose specialty, doctor, and time</p>
+              <p className="text-sm text-muted-foreground">Choose specialty, doctor, time, and reminder</p>
             </div>
             <div>
               <Label>Checkup Name</Label>
@@ -499,9 +514,67 @@ function PatientBook() {
               <Label>Reason for Visit</Label>
               <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} placeholder="Describe your symptoms or reason..." />
             </div>
+            <div>
+              <Label className="flex items-center gap-2"><Bell className="h-3.5 w-3.5" /> Reminder Timing</Label>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {REMINDER_OPTIONS.map((reminder) => (
+                  <button
+                    type="button"
+                    key={reminder.value}
+                    onClick={() => setPatientReminderMinutes(reminder.value)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all",
+                      patientReminderMinutes === reminder.value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40",
+                    )}
+                  >
+                    <Checkbox checked={patientReminderMinutes === reminder.value} className="pointer-events-none" />
+                    {reminder.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label>Notification Channel</Label>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {[...NOTIFICATION_CHANNEL_OPTIONS, { value: "all", label: "All" }].map((channel) => {
+                  const isAll = channel.value === "all";
+                  const active = isAll
+                    ? notificationChannels.length === NOTIFICATION_CHANNEL_OPTIONS.length
+                    : notificationChannels.includes(channel.value);
+
+                  return (
+                    <button
+                      type="button"
+                      key={channel.value}
+                      onClick={() => {
+                        if (isAll) {
+                          setNotificationChannels(NOTIFICATION_CHANNEL_OPTIONS.map((option) => option.value));
+                          return;
+                        }
+
+                        setNotificationChannels((current) => {
+                          if (current.includes(channel.value)) {
+                            return current.length === 1 ? current : current.filter((item) => item !== channel.value);
+                          }
+
+                          return [...current, channel.value];
+                        });
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all",
+                        active ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40",
+                      )}
+                    >
+                      <Checkbox checked={active} className="pointer-events-none" />
+                      {channel.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="flex items-center justify-between pt-2">
               <Button variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
-              <Button onClick={() => setStep(3)} disabled={!checkupName.trim() || !specialty || !doctor || !appointmentDate || !selectedSlot}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
+              <Button onClick={() => setStep(3)} disabled={!checkupName.trim() || !specialty || !doctor || !appointmentDate || !selectedSlot || notificationChannels.length === 0}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
             </div>
           </div>
         )}
@@ -535,6 +608,8 @@ function PatientBook() {
                 <Row k="Doctor" v={selectedDoctor ? getDoctorName(selectedDoctor) : ""} />
                 <Row k="Date" v={formatDisplayDate(appointmentDate)} />
                 <Row k="Time" v={selectedSlot?.label ?? ""} />
+                <Row k="Reminder" v={getReminderLabel(patientReminderMinutes)} />
+                <Row k="Channel" v={getChannelLabel(notificationChannels)} />
                 {reasonForVisit.trim() && <Row k="Reason" v={reasonForVisit.trim()} />}
               </Block>
             </div>
@@ -581,6 +656,18 @@ function getDoctorName(doctor: Doctor) {
 
 function getInitials(name: string) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "DR";
+}
+
+function getReminderLabel(value: number) {
+  return REMINDER_OPTIONS.find((option) => option.value === value)?.label ?? `${value} Minutes Before`;
+}
+
+function getChannelLabel(values: string[]) {
+  if (values.length === NOTIFICATION_CHANNEL_OPTIONS.length) return "All";
+
+  return values
+    .map((value) => NOTIFICATION_CHANNEL_OPTIONS.find((option) => option.value === value)?.label ?? value)
+    .join(", ");
 }
 
 function buildWeekDates(offset: number) {

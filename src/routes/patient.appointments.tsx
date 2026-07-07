@@ -4,6 +4,7 @@ import { PatientShell } from "./patient";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/app-shell";
 import { Appointment, type AppointmentRecord } from "@/services/appointment.service";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/patient/appointments")({
   head: () => ({ meta: [{ title: "My Appointments — MediFlow" }] }),
@@ -41,6 +42,7 @@ function PatientAppointments() {
                   <th className="py-2 pr-4">Reason</th>
                   <th className="py-2 pr-4">Date</th>
                   <th className="py-2 pr-4">Time</th>
+                  <th className="py-2 pr-4">Created By</th>
                   <th className="py-2 pr-4">Status</th>
                 </tr>
               </thead>
@@ -52,8 +54,9 @@ function PatientAppointments() {
                     <td className="py-3 pr-4">{getDoctorLabel(appointment)}</td>
                     <td className="py-3 pr-4 text-muted-foreground">{getCheckupName(appointment)}</td>
                     <td className="py-3 pr-4 text-muted-foreground">{appointment.reasonForVisit || "Not specified"}</td>
-                    <td className="py-3 pr-4 text-muted-foreground">{formatDate(appointment.appointmentDate)}</td>
-                    <td className="py-3 pr-4 text-muted-foreground">{formatTime(appointment.estimatedTurnTime)}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{getAppointmentDateLabel(appointment)}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{getAppointmentTimeLabel(appointment)}</td>
+                    <td className="py-3 pr-4"><CreatorRoleBadge role={appointment.createdByRole} /></td>
                     <td className="py-3 pr-4"><StatusBadge status={formatStatus(appointment.status)} /></td>
                   </tr>
                 ))}
@@ -84,6 +87,23 @@ function getCheckupName(appointment: AppointmentRecord) {
   return checkup?.name ?? "Checkup";
 }
 
+function CreatorRoleBadge({ role }: { role?: string }) {
+  const normalizedRole = (role || "unknown").toLowerCase();
+  const roleClassName = {
+    admin: "border-sky-200 bg-sky-50 text-sky-700",
+    doctor: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    patient: "border-amber-200 bg-amber-50 text-amber-700",
+    user: "border-slate-200 bg-slate-50 text-slate-700",
+    unknown: "border-slate-200 bg-slate-50 text-slate-600",
+  }[normalizedRole] ?? "border-slate-200 bg-slate-50 text-slate-600";
+
+  return (
+    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", roleClassName)}>
+      {formatCreatorRole(role)}
+    </span>
+  );
+}
+
 function formatAppointmentId(id: string) {
   return `APT-${id.slice(-5).toUpperCase()}`;
 }
@@ -97,6 +117,20 @@ function formatDate(value?: string) {
   });
 }
 
+function isDelayedAppointment(appointment: AppointmentRecord) {
+  return appointment.status === "delayed";
+}
+
+function getAppointmentDateLabel(appointment: AppointmentRecord) {
+  if (isDelayedAppointment(appointment)) return "N/A";
+  return formatDate(appointment.appointmentDate);
+}
+
+function getAppointmentTimeLabel(appointment: AppointmentRecord) {
+  if (isDelayedAppointment(appointment)) return "N/A";
+  return formatTime(appointment.estimatedTurnTime);
+}
+
 function formatTime(value?: string) {
   if (!value) return "";
   return new Date(value).toLocaleTimeString("en-US", {
@@ -108,4 +142,9 @@ function formatTime(value?: string) {
 
 function formatStatus(status = "pending") {
   return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatCreatorRole(role?: string) {
+  if (!role) return "Unknown";
+  return role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
