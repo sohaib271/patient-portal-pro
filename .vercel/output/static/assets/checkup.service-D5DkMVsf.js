@@ -1,1 +1,0 @@
-import{r as e}from"./dist-t4Ar18J9.js";var t=class{static async findOrCreate(t){return(await e.post(`/checkups/find-or-create`,t)).data}};export{t};
