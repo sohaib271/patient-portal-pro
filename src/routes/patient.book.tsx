@@ -56,7 +56,7 @@ function PatientBook() {
   const [availability, setAvailability] = useState<DoctorAvailability | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null);
   const [patientReminderMinutes, setPatientReminderMinutes] = useState(60);
-  const [notificationChannels, setNotificationChannels] = useState<string[]>(["email"]);
+  const [notificationChannels, setNotificationChannels] = useState<string[]>(["whatsapp"]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotError, setSlotError] = useState("");
   const [bookingError, setBookingError] = useState("");
