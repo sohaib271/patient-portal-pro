@@ -585,8 +585,9 @@ function PatientBook() {
               <h2 className="text-base font-semibold">Review &amp; Confirm</h2>
               <p className="text-sm text-muted-foreground">Please verify the details before submitting</p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Block title="Patient">
+            <Block>
+              <ReviewHeading title="Patient" />
+              <div className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
                 <Row k="For" v={who} />
                 {who === "Relative" ? (
                   <>
@@ -597,12 +598,14 @@ function PatientBook() {
                   </>
                 ) : (
                   <>
-                    <Row k="Name" v="Jacob Jones" />
-                    <Row k="Patient ID" v="P-10051" />
+                    <Row k="Name" v={getUserName(user)} />
+                    <Row k="Patient ID" v={user?.patientId ?? user?._id ?? ""} />
                   </>
                 )}
-              </Block>
-              <Block title="Appointment">
+              </div>
+              <div className="my-4 border-t border-border" />
+              <ReviewHeading title="Appointment" />
+              <div className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
                 <Row k="Checkup" v={checkupName} />
                 <Row k="Specialty" v={specialty} />
                 <Row k="Doctor" v={selectedDoctor ? getDoctorName(selectedDoctor) : ""} />
@@ -611,8 +614,8 @@ function PatientBook() {
                 <Row k="Reminder" v={getReminderLabel(patientReminderMinutes)} />
                 <Row k="Channel" v={getChannelLabel(notificationChannels)} />
                 {reasonForVisit.trim() && <Row k="Reason" v={reasonForVisit.trim()} />}
-              </Block>
-            </div>
+              </div>
+            </Block>
             {bookingError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{bookingError}</div>}
             <div className="flex items-center justify-between pt-2">
               <Button variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-4 w-4" /> Back</Button>
@@ -627,13 +630,16 @@ function PatientBook() {
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-3 text-sm font-semibold text-primary">{title}</div>
-      <dl className="space-y-1.5">{children}</dl>
+      <dl>{children}</dl>
     </div>
   );
+}
+
+function ReviewHeading({ title }: { title: string }) {
+  return <div className="mb-3 text-sm font-semibold text-primary">{title}</div>;
 }
 
 function Row({ k, v }: { k: string; v: string }) {
@@ -647,6 +653,10 @@ function Row({ k, v }: { k: string; v: string }) {
 
 function getPatientName(patient: PatientWithPhone) {
   return [patient.firstName, patient.lastName].filter(Boolean).join(" ") || "Unnamed Patient";
+}
+
+function getUserName(user: { firstName?: string; lastName?: string } | null | undefined) {
+  return [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Patient";
 }
 
 function getDoctorName(doctor: Doctor) {
