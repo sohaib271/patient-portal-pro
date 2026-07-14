@@ -120,8 +120,11 @@ export class Appointment{
         return res.data as { success:boolean; message?:string; appointments:AppointmentRecord[] };
     }
 
-    static async getDoctorAvailability(doctorId:string,date:string,bufferMinutes?:number,excludeAppointmentId?:string){
-        const res = await api.get(`/appointment/doctor/${doctorId}/availability`,{params:{date,bufferMinutes,excludeAppointmentId}});
+    static async getDoctorAvailability(doctorId:string,date:string,bufferMinutes?:number,excludeAppointmentId?:string,signal?:AbortSignal){
+        const res = await api.get(`/appointment/doctor/${doctorId}/availability`,{
+            params:{date,bufferMinutes,excludeAppointmentId},
+            signal,
+        });
         return res.data as DoctorAvailability;
     }
 

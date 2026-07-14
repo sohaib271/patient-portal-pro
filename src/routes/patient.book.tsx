@@ -95,27 +95,27 @@ function PatientBook() {
       return;
     }
 
-    let active = true;
+    const controller = new AbortController();
     setIsLoadingSlots(true);
     setSlotError("");
     setSelectedSlot(null);
 
-    Appointment.getDoctorAvailability(doctor, appointmentDate)
+    Appointment.getDoctorAvailability(doctor, appointmentDate, undefined, undefined, controller.signal)
       .then((response) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setAvailability(response);
       })
       .catch((err) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setAvailability(null);
         setSlotError(getErrorMessage(err) ?? "Unable to load slots for this day.");
       })
       .finally(() => {
-        if (active) setIsLoadingSlots(false);
+        if (!controller.signal.aborted) setIsLoadingSlots(false);
       });
 
     return () => {
-      active = false;
+      controller.abort();
     };
   }, [appointmentDate, doctor]);
 
@@ -150,6 +150,8 @@ function PatientBook() {
   };
 
   const handleConfirmBooking = async () => {
+    if (isSubmittingBooking) return;
+
     const patientId = who === "Self" ? user?._id : selectedRelative?._id;
     const contactId = who === "Self" ? contact?._id : selectedRelative?.contactId;
 

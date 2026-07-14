@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { AppShell, Avatar } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -111,26 +111,31 @@ function NewAppointmentPage() {
       return;
     }
 
-    let active = true;
+    const controller = new AbortController();
     setIsLoadingSlots(true);
     setSlotError("");
     setSelectedSlot(null);
 
-    Appointment.getDoctorAvailability(doctor, appointmentDate, bufferMinutes)
-      .then((response) => {
-        if (active) setAvailability(response);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setAvailability(null);
-        setSlotError(getErrorMessage(err) ?? "Unable to load slots for this day.");
-      })
-      .finally(() => {
-        if (active) setIsLoadingSlots(false);
-      });
+    // Buffer input can change rapidly. Debounce it and abort obsolete HTTP calls so
+    // the server only computes availability for the latest selection.
+    const timer = window.setTimeout(() => {
+      Appointment.getDoctorAvailability(doctor, appointmentDate, bufferMinutes, undefined, controller.signal)
+        .then((response) => {
+          if (!controller.signal.aborted) setAvailability(response);
+        })
+        .catch((err) => {
+          if (controller.signal.aborted) return;
+          setAvailability(null);
+          setSlotError(getErrorMessage(err) ?? "Unable to load slots for this day.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsLoadingSlots(false);
+        });
+    }, 250);
 
     return () => {
-      active = false;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [appointmentDate, bufferMinutes, doctor]);
 
@@ -201,6 +206,8 @@ function NewAppointmentPage() {
   };
 
   const handleConfirmBooking = async () => {
+    if (isSubmittingBooking) return;
+
     if (!selected || !selected.contactId || !doctor || !appointmentDate || !selectedSlot) {
       setBookingError("Please complete patient, doctor, date, and slot details.");
       return;
@@ -260,244 +267,289 @@ function NewAppointmentPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="p-6">
-          {step === 1 && (
-            <div className="space-y-5 animate-in fade-in duration-300">
-              <div>
-                <h2 className="text-base font-semibold">Patient</h2>
-                <p className="text-sm text-muted-foreground">Search by phone and select the patient for this appointment.</p>
-              </div>
-              <div>
-                <Label htmlFor="search">Search Patient by Phone</Label>
-                <form onSubmit={handlePatientSearch} className="mt-1.5 flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="search" type="tel" value={query} onChange={(e) => { setQuery(e.target.value); setSelected(null); setHasSearched(false); setFound([]); }} placeholder="03001234567" className="pl-9" />
-                  </div>
-                  <Button type="submit" disabled={isSearching || !query.trim()}>{isSearching ? "Searching..." : "Search"}</Button>
-                </form>
-              </div>
+          {step === 1 && <PatientStep query={query} found={found} selected={selected} hasSearched={hasSearched} isSearching={isSearching} isCreatingPatient={isCreatingPatient} isRegisteringAnother={isRegisteringAnother} patientError={patientError} newPatient={newPatient} setNewPatient={setNewPatient} onSearch={handlePatientSearch} onCreate={handleCreatePatient} onQueryChange={(value) => { setQuery(value); setSelected(null); setHasSearched(false); setFound([]); }} onSelect={setSelected} onToggleRegister={() => setIsRegisteringAnother((current) => !current)} onContinue={() => setStep(2)} />}
 
-              {patientError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{patientError}</div>}
+          {step === 2 && <AppointmentDetailsStep checkupName={checkupName} specialty={specialty} doctor={doctor} reasonForVisit={reasonForVisit} clinicalNotes={clinicalNotes} bufferMinutes={bufferMinutes} patientReminderMinutes={patientReminderMinutes} notificationChannels={notificationChannels} specialties={specialties} filteredDoctors={filteredDoctors} selectedDoctor={selectedDoctor} scheduledDays={scheduledDays} weekDates={weekDates} weekOffset={weekOffset} weekRangeLabel={weekRangeLabel} appointmentDate={appointmentDate} availability={availability} selectedSlot={selectedSlot} isLoadingDoctors={isLoadingDoctors} doctorsError={doctorsError} isLoadingSlots={isLoadingSlots} slotError={slotError} setCheckupName={setCheckupName} setSpecialty={setSpecialty} setDoctor={setDoctor} setReasonForVisit={setReasonForVisit} setClinicalNotes={setClinicalNotes} setBufferMinutes={setBufferMinutes} setPatientReminderMinutes={setPatientReminderMinutes} setNotificationChannels={setNotificationChannels} setWeekOffset={setWeekOffset} setAppointmentDate={setAppointmentDate} setAvailability={setAvailability} setSelectedSlot={setSelectedSlot} onBack={() => setStep(1)} onContinue={() => setStep(3)} />}
 
-              {hasSearched && found.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center">
-                  <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-rose-100 text-rose-600">
-                    <Search className="h-5 w-5" />
-                  </div>
-                  <div className="font-semibold">Patient Not Found</div>
-                  <p className="mt-1 text-sm text-muted-foreground">No patient exists against this phone number. Register a patient to continue.</p>
-                </div>
-              )}
-              {hasSearched && found.length === 0 && (
-                <PatientForm patient={newPatient} setPatient={setNewPatient} onSubmit={handleCreatePatient} isSubmitting={isCreatingPatient} title="Register Patient" />
-              )}
-              {found.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs text-muted-foreground">{found.length} patient(s) found</div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setIsRegisteringAnother((current) => !current)}>
-                      {isRegisteringAnother ? "Hide form" : "Register another patient"}
-                    </Button>
-                  </div>
-                  {found.slice(0, 5).map((p) => (
-                    <button
-                      key={p._id}
-                      onClick={() => setSelected(p)}
-                      className={cn("flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all", selected?._id === p._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/50 hover:bg-muted/40")}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar initials={getInitials(`${p.firstName} ${p.lastName}`)} />
-                        <div>
-                          <div className="font-medium">{p.firstName} {p.lastName}</div>
-                          <div className="text-xs text-muted-foreground">{p.patientId} - {p.phone}</div>
-                        </div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  ))}
-                </div>
-              )}
-              {hasSearched && found.length > 0 && isRegisteringAnother && (
-                <PatientForm patient={newPatient} setPatient={setNewPatient} onSubmit={handleCreatePatient} isSubmitting={isCreatingPatient} title="Register Another Patient" />
-              )}
-
-              <div className="flex justify-end pt-2">
-                <Button disabled={!selected} onClick={() => setStep(2)}>Continue <ArrowRight className="h-4 w-4" /></Button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-5 animate-in fade-in duration-300">
-              <div>
-                <h2 className="text-base font-semibold">Appointment Details</h2>
-                <p className="text-sm text-muted-foreground">Choose specialty, doctor, date, slot, buffer, and reminder.</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label>Checkup Name</Label>
-                  <Input className="mt-1.5" value={checkupName} onChange={(event) => setCheckupName(event.target.value)} placeholder="General consultation" required />
-                </div>
-                <div>
-                  <Label>Buffer Minutes</Label>
-                  <Input
-                    className="mt-1.5"
-                    type="number"
-                    min="0"
-                    value={bufferMinutes}
-                    onChange={(event) => setBufferMinutes(Math.max(0, Number(event.target.value) || 0))}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Specialty</Label>
-                <select
-                  className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={specialty}
-                  onChange={(event) => { setSpecialty(event.target.value); setDoctor(""); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }}
-                  disabled={isLoadingDoctors || specialties.length === 0}
-                  required
-                >
-                  <option value="">{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}</option>
-                  {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-                {doctorsError && <div className="mt-2 text-sm text-destructive">Unable to load available specialties.</div>}
-              </div>
-              <div>
-                <Label>Doctor</Label>
-                {!specialty ? (
-                  <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a specialty to see doctors.</div>
-                ) : filteredDoctors.length === 0 ? (
-                  <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No available doctors found for this specialty.</div>
-                ) : (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {filteredDoctors.map((item) => (
-                      <button key={item._id} onClick={() => { setDoctor(item._id); setAppointmentDate(""); setSelectedSlot(null); setAvailability(null); }} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition-all", doctor === item._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
-                        <div className="grid h-9 w-9 place-items-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">{getInitials(getDoctorName(item))}</div>
-                        <div><div className="text-sm font-medium">{getDoctorName(item)}</div><div className="text-xs text-muted-foreground">{item.speciality}</div></div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <DateSlotPicker
-                selectedDoctor={selectedDoctor}
-                scheduledDays={scheduledDays}
-                weekDates={weekDates}
-                weekOffset={weekOffset}
-                weekRangeLabel={weekRangeLabel}
-                appointmentDate={appointmentDate}
-                availability={availability}
-                selectedSlot={selectedSlot}
-                isLoadingSlots={isLoadingSlots}
-                slotError={slotError}
-                setWeekOffset={setWeekOffset}
-                setAppointmentDate={setAppointmentDate}
-                setSelectedSlot={setSelectedSlot}
-                setAvailability={setAvailability}
-              />
-              <div>
-                <Label>Reason for Visit</Label>
-                <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} placeholder="Describe symptoms or reason..." />
-              </div>
-              <div>
-                <Label className="flex items-center gap-2"><Bell className="h-3.5 w-3.5" /> Reminder Timing</Label>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  {REMINDER_OPTIONS.map((reminder) => (
-                    <button type="button" key={reminder.value} onClick={() => setPatientReminderMinutes(reminder.value)} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all", patientReminderMinutes === reminder.value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
-                      <Checkbox checked={patientReminderMinutes === reminder.value} className="pointer-events-none" />
-                      {reminder.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Notification Channel</Label>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  {[...NOTIFICATION_CHANNEL_OPTIONS, { value: "all", label: "All" }].map((channel) => {
-                    const isAll = channel.value === "all";
-                    const active = isAll ? notificationChannels.length === NOTIFICATION_CHANNEL_OPTIONS.length : notificationChannels.includes(channel.value);
-                    return (
-                      <button
-                        type="button"
-                        key={channel.value}
-                        onClick={() => {
-                          if (isAll) {
-                            setNotificationChannels(NOTIFICATION_CHANNEL_OPTIONS.map((option) => option.value));
-                            return;
-                          }
-                          setNotificationChannels((current) => current.includes(channel.value) ? (current.length === 1 ? current : current.filter((item) => item !== channel.value)) : [...current, channel.value]);
-                        }}
-                        className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all", active ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}
-                      >
-                        <Checkbox checked={active} className="pointer-events-none" />
-                        {channel.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <Label>Clinical Notes</Label>
-                <Textarea className="mt-1.5" value={clinicalNotes} onChange={(event) => setClinicalNotes(event.target.value)} placeholder="Add clinical notes..." rows={3} />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <Button variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4" /> Go Back</Button>
-                <Button onClick={() => setStep(3)} disabled={!checkupName.trim() || !specialty || !doctor || !appointmentDate || !selectedSlot || notificationChannels.length === 0}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && selected && (
-            <div className="space-y-5 animate-in fade-in duration-300">
-              <div>
-                <h2 className="text-base font-semibold">Review &amp; Confirm</h2>
-                <p className="text-sm text-muted-foreground">Please review all appointment details before confirming.</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ReviewBlock icon={UserIcon} title="Patient" items={[["Name", getPatientName(selected)], ["Patient ID", selected.patientId], ["Phone", selected.phone], ["Age", String(selected.age)]]} />
-                <ReviewBlock icon={CalendarCheck2} title="Appointment" items={[["Checkup", checkupName], ["Specialty", specialty], ["Doctor", selectedDoctor ? getDoctorName(selectedDoctor) : ""], ["Date", formatDisplayDate(appointmentDate)], ["Time", selectedSlot?.label ?? ""], ["Buffer", `${bufferMinutes} minutes`]]} />
-                <ReviewBlock icon={Bell} title="Reminders" items={[["Timing", getReminderLabel(patientReminderMinutes)], ["Channel", getChannelLabel(notificationChannels)]]} />
-                <ReviewBlock icon={FileText} title="Notes" items={[["Reason", reasonForVisit.trim() || "Not specified"], ["Clinical", clinicalNotes.trim() || "None"]]} />
-              </div>
-              {bookingError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{bookingError}</div>}
-              <div className="flex items-center justify-between pt-2">
-                <Button variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-4 w-4" /> Go Back</Button>
-                <Button onClick={handleConfirmBooking} disabled={isSubmittingBooking}>
-                  {isSubmittingBooking ? "Booking..." : "Confirm Booking"} <CheckCircle2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          {step === 3 && selected && <ReviewStep selected={selected} checkupName={checkupName} specialty={specialty} selectedDoctor={selectedDoctor} appointmentDate={appointmentDate} selectedSlot={selectedSlot} bufferMinutes={bufferMinutes} patientReminderMinutes={patientReminderMinutes} notificationChannels={notificationChannels} reasonForVisit={reasonForVisit} clinicalNotes={clinicalNotes} bookingError={bookingError} isSubmitting={isSubmittingBooking} onBack={() => setStep(2)} onConfirm={handleConfirmBooking} />}
         </Card>
 
-        <aside>
-          {selected ? (
-            <Card className="p-5 sticky top-20">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"><UserRound className="h-3.5 w-3.5" /> Patient Summary</div>
-              <div className="flex flex-col items-center text-center">
-                <Avatar initials={getInitials(getPatientName(selected))} />
-                <div className="mt-2 font-semibold">{getPatientName(selected)}</div>
-                <div className="text-xs text-muted-foreground">{selected.patientId}</div>
-              </div>
-              <dl className="mt-4 space-y-2 text-sm">
-                <SumRow label="Phone" value={selected.phone} />
-                <SumRow label="Age" value={String(selected.age)} />
-                <SumRow label="Gender" value={selected.gender === "F" ? "Female" : "Male"} />
-                <SumRow label="Relation" value={selected.relation ?? "Self"} />
-              </dl>
-            </Card>
-          ) : (
-            <Card className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="grid h-14 w-14 place-items-center rounded-full bg-muted text-muted-foreground"><UserRound className="h-6 w-6" /></div>
-              <div className="mt-3 font-medium">No Patient Selected</div>
-              <p className="text-xs text-muted-foreground">Search and select a patient to view their information.</p>
-            </Card>
-          )}
-        </aside>
+        <PatientSummary patient={selected} />
       </div>
     </AppShell>
+  );
+}
+
+function PatientStep({ query, found, selected, hasSearched, isSearching, isCreatingPatient, isRegisteringAnother, patientError, newPatient, setNewPatient, onSearch, onCreate, onQueryChange, onSelect, onToggleRegister, onContinue }: {
+  query: string;
+  found: AppointmentPatient[];
+  selected: AppointmentPatient | null;
+  hasSearched: boolean;
+  isSearching: boolean;
+  isCreatingPatient: boolean;
+  isRegisteringAnother: boolean;
+  patientError: string;
+  newPatient: NewPatientFormState;
+  setNewPatient: (value: NewPatientFormState) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onQueryChange: (value: string) => void;
+  onSelect: (patient: AppointmentPatient) => void;
+  onToggleRegister: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <div>
+        <h2 className="text-base font-semibold">Patient</h2>
+        <p className="text-sm text-muted-foreground">Search by phone and select the patient for this appointment.</p>
+      </div>
+      <div>
+        <Label htmlFor="search">Search Patient by Phone</Label>
+        <form onSubmit={onSearch} className="mt-1.5 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input id="search" type="tel" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="03001234567" className="pl-9" />
+          </div>
+          <Button type="submit" disabled={isSearching || !query.trim()}>{isSearching ? "Searching..." : "Search"}</Button>
+        </form>
+      </div>
+
+      {patientError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{patientError}</div>}
+
+      {hasSearched && found.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center">
+          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-rose-100 text-rose-600"><Search className="h-5 w-5" /></div>
+          <div className="font-semibold">Patient Not Found</div>
+          <p className="mt-1 text-sm text-muted-foreground">No patient exists against this phone number. Register a patient to continue.</p>
+        </div>
+      )}
+      {hasSearched && found.length === 0 && <PatientForm patient={newPatient} setPatient={setNewPatient} onSubmit={onCreate} isSubmitting={isCreatingPatient} title="Register Patient" />}
+
+      {found.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs text-muted-foreground">{found.length} patient(s) found</div>
+            <Button type="button" variant="outline" size="sm" onClick={onToggleRegister}>{isRegisteringAnother ? "Hide form" : "Register another patient"}</Button>
+          </div>
+          {found.slice(0, 5).map((patient) => (
+            <button key={patient._id} type="button" onClick={() => onSelect(patient)} className={cn("flex w-full items-center justify-between rounded-xl border p-3 text-left transition-all", selected?._id === patient._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/50 hover:bg-muted/40")}>
+              <div className="flex items-center gap-3">
+                <Avatar initials={getInitials(`${patient.firstName} ${patient.lastName}`)} />
+                <div>
+                  <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                  <div className="text-xs text-muted-foreground">{patient.patientId} - {patient.phone}</div>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      )}
+      {hasSearched && found.length > 0 && isRegisteringAnother && <PatientForm patient={newPatient} setPatient={setNewPatient} onSubmit={onCreate} isSubmitting={isCreatingPatient} title="Register Another Patient" />}
+
+      <div className="flex justify-end pt-2">
+        <Button disabled={!selected} onClick={onContinue}>Continue <ArrowRight className="h-4 w-4" /></Button>
+      </div>
+    </div>
+  );
+}
+
+function AppointmentDetailsStep(props: {
+  checkupName: string;
+  specialty: string;
+  doctor: string;
+  reasonForVisit: string;
+  clinicalNotes: string;
+  bufferMinutes: number;
+  patientReminderMinutes: number;
+  notificationChannels: string[];
+  specialties: string[];
+  filteredDoctors: Doctor[];
+  selectedDoctor?: Doctor;
+  scheduledDays: Set<string>;
+  weekDates: ReturnType<typeof buildWeekDates>;
+  weekOffset: number;
+  weekRangeLabel: string;
+  appointmentDate: string;
+  availability: DoctorAvailability | null;
+  selectedSlot: AppointmentSlot | null;
+  isLoadingDoctors: boolean;
+  doctorsError: boolean;
+  isLoadingSlots: boolean;
+  slotError: string;
+  setCheckupName: (value: string) => void;
+  setSpecialty: (value: string) => void;
+  setDoctor: (value: string) => void;
+  setReasonForVisit: (value: string) => void;
+  setClinicalNotes: (value: string) => void;
+  setBufferMinutes: (value: number) => void;
+  setPatientReminderMinutes: (value: number) => void;
+  setNotificationChannels: Dispatch<SetStateAction<string[]>>;
+  setWeekOffset: Dispatch<SetStateAction<number>>;
+  setAppointmentDate: (value: string) => void;
+  setAvailability: (value: DoctorAvailability | null) => void;
+  setSelectedSlot: (value: AppointmentSlot | null) => void;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  const { checkupName, specialty, doctor, reasonForVisit, clinicalNotes, bufferMinutes, patientReminderMinutes, notificationChannels, specialties, filteredDoctors, selectedDoctor, scheduledDays, weekDates, weekOffset, weekRangeLabel, appointmentDate, availability, selectedSlot, isLoadingDoctors, doctorsError, isLoadingSlots, slotError, setCheckupName, setSpecialty, setDoctor, setReasonForVisit, setClinicalNotes, setBufferMinutes, setPatientReminderMinutes, setNotificationChannels, setWeekOffset, setAppointmentDate, setAvailability, setSelectedSlot, onBack, onContinue } = props;
+
+  const clearScheduleSelection = () => {
+    setAppointmentDate("");
+    setSelectedSlot(null);
+    setAvailability(null);
+  };
+
+  return (
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <div>
+        <h2 className="text-base font-semibold">Appointment Details</h2>
+        <p className="text-sm text-muted-foreground">Choose specialty, doctor, date, slot, buffer, and reminder.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label>Checkup Name</Label>
+          <Input className="mt-1.5" value={checkupName} onChange={(event) => setCheckupName(event.target.value)} placeholder="General consultation" required />
+        </div>
+        <div>
+          <Label>Buffer Minutes</Label>
+          <Input className="mt-1.5" type="number" min="0" value={bufferMinutes} onChange={(event) => setBufferMinutes(Math.max(0, Number(event.target.value) || 0))} />
+        </div>
+      </div>
+      <div>
+        <Label>Specialty</Label>
+        <select className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={specialty} onChange={(event) => { setSpecialty(event.target.value); setDoctor(""); clearScheduleSelection(); }} disabled={isLoadingDoctors || specialties.length === 0} required>
+          <option value="">{isLoadingDoctors ? "Loading specialties..." : "Select specialty"}</option>
+          {specialties.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        {doctorsError && <div className="mt-2 text-sm text-destructive">Unable to load available specialties.</div>}
+      </div>
+      <div>
+        <Label>Doctor</Label>
+        {!specialty ? (
+          <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">Select a specialty to see doctors.</div>
+        ) : filteredDoctors.length === 0 ? (
+          <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">No available doctors found for this specialty.</div>
+        ) : (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {filteredDoctors.map((item) => (
+              <button key={item._id} type="button" onClick={() => { setDoctor(item._id); clearScheduleSelection(); }} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition-all", doctor === item._id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40")}>
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">{getInitials(getDoctorName(item))}</div>
+                <div><div className="text-sm font-medium">{getDoctorName(item)}</div><div className="text-xs text-muted-foreground">{item.speciality}</div></div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <DateSlotPicker selectedDoctor={selectedDoctor} scheduledDays={scheduledDays} weekDates={weekDates} weekOffset={weekOffset} weekRangeLabel={weekRangeLabel} appointmentDate={appointmentDate} availability={availability} selectedSlot={selectedSlot} isLoadingSlots={isLoadingSlots} slotError={slotError} setWeekOffset={setWeekOffset} setAppointmentDate={setAppointmentDate} setSelectedSlot={setSelectedSlot} setAvailability={setAvailability} />
+      <div>
+        <Label>Reason for Visit</Label>
+        <Textarea className="mt-1.5" rows={3} value={reasonForVisit} onChange={(event) => setReasonForVisit(event.target.value)} placeholder="Describe symptoms or reason..." />
+      </div>
+      <div>
+        <Label className="flex items-center gap-2"><Bell className="h-3.5 w-3.5" /> Reminder Timing</Label>
+        <div className="mt-2 flex flex-wrap gap-3">
+          {REMINDER_OPTIONS.map((reminder) => (
+            <button type="button" key={reminder.value} onClick={() => setPatientReminderMinutes(reminder.value)} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all", patientReminderMinutes === reminder.value ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
+              <Checkbox checked={patientReminderMinutes === reminder.value} className="pointer-events-none" />{reminder.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Label>Notification Channel</Label>
+        <div className="mt-2 flex flex-wrap gap-3">
+          {[...NOTIFICATION_CHANNEL_OPTIONS, { value: "all", label: "All" }].map((channel) => {
+            const isAll = channel.value === "all";
+            const active = isAll ? notificationChannels.length === NOTIFICATION_CHANNEL_OPTIONS.length : notificationChannels.includes(channel.value);
+            return (
+              <button type="button" key={channel.value} onClick={() => {
+                if (isAll) return setNotificationChannels(NOTIFICATION_CHANNEL_OPTIONS.map((option) => option.value));
+                setNotificationChannels((current) => current.includes(channel.value) ? (current.length === 1 ? current : current.filter((item) => item !== channel.value)) : [...current, channel.value]);
+              }} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all", active ? "border-primary bg-primary-soft text-primary" : "border-border hover:border-primary/40")}>
+                <Checkbox checked={active} className="pointer-events-none" />{channel.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <Label>Clinical Notes</Label>
+        <Textarea className="mt-1.5" value={clinicalNotes} onChange={(event) => setClinicalNotes(event.target.value)} placeholder="Add clinical notes..." rows={3} />
+      </div>
+      <div className="flex items-center justify-between pt-2">
+        <Button variant="outline" onClick={onBack}><ArrowLeft className="h-4 w-4" /> Go Back</Button>
+        <Button onClick={onContinue} disabled={!checkupName.trim() || !specialty || !doctor || !appointmentDate || !selectedSlot || notificationChannels.length === 0}>Review &amp; Confirm <ArrowRight className="h-4 w-4" /></Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewStep({ selected, checkupName, specialty, selectedDoctor, appointmentDate, selectedSlot, bufferMinutes, patientReminderMinutes, notificationChannels, reasonForVisit, clinicalNotes, bookingError, isSubmitting, onBack, onConfirm }: {
+  selected: AppointmentPatient;
+  checkupName: string;
+  specialty: string;
+  selectedDoctor?: Doctor;
+  appointmentDate: string;
+  selectedSlot: AppointmentSlot | null;
+  bufferMinutes: number;
+  patientReminderMinutes: number;
+  notificationChannels: string[];
+  reasonForVisit: string;
+  clinicalNotes: string;
+  bookingError: string;
+  isSubmitting: boolean;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <div>
+        <h2 className="text-base font-semibold">Review &amp; Confirm</h2>
+        <p className="text-sm text-muted-foreground">Please review all appointment details before confirming.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ReviewBlock icon={UserIcon} title="Patient" items={[["Name", getPatientName(selected)], ["Patient ID", selected.patientId], ["Phone", selected.phone], ["Age", String(selected.age)]]} />
+        <ReviewBlock icon={CalendarCheck2} title="Appointment" items={[["Checkup", checkupName], ["Specialty", specialty], ["Doctor", selectedDoctor ? getDoctorName(selectedDoctor) : ""], ["Date", formatDisplayDate(appointmentDate)], ["Time", selectedSlot?.label ?? ""], ["Buffer", `${bufferMinutes} minutes`]]} />
+        <ReviewBlock icon={Bell} title="Reminders" items={[["Timing", getReminderLabel(patientReminderMinutes)], ["Channel", getChannelLabel(notificationChannels)]]} />
+        <ReviewBlock icon={FileText} title="Notes" items={[["Reason", reasonForVisit.trim() || "Not specified"], ["Clinical", clinicalNotes.trim() || "None"]]} />
+      </div>
+      {bookingError && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{bookingError}</div>}
+      <div className="flex items-center justify-between pt-2">
+        <Button variant="outline" onClick={onBack}><ArrowLeft className="h-4 w-4" /> Go Back</Button>
+        <Button onClick={onConfirm} disabled={isSubmitting}>{isSubmitting ? "Booking..." : "Confirm Booking"} <CheckCircle2 className="h-4 w-4" /></Button>
+      </div>
+    </div>
+  );
+}
+
+function PatientSummary({ patient }: { patient: AppointmentPatient | null }) {
+  return (
+    <aside>
+      {patient ? (
+        <Card className="p-5 sticky top-20">
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"><UserRound className="h-3.5 w-3.5" /> Patient Summary</div>
+          <div className="flex flex-col items-center text-center">
+            <Avatar initials={getInitials(getPatientName(patient))} />
+            <div className="mt-2 font-semibold">{getPatientName(patient)}</div>
+            <div className="text-xs text-muted-foreground">{patient.patientId}</div>
+          </div>
+          <dl className="mt-4 space-y-2 text-sm">
+            <SumRow label="Phone" value={patient.phone} />
+            <SumRow label="Age" value={String(patient.age)} />
+            <SumRow label="Gender" value={patient.gender === "F" ? "Female" : "Male"} />
+            <SumRow label="Relation" value={patient.relation ?? "Self"} />
+          </dl>
+        </Card>
+      ) : (
+        <Card className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-muted text-muted-foreground"><UserRound className="h-6 w-6" /></div>
+          <div className="mt-3 font-medium">No Patient Selected</div>
+          <p className="text-xs text-muted-foreground">Search and select a patient to view their information.</p>
+        </Card>
+      )}
+    </aside>
   );
 }
 

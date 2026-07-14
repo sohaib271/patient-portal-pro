@@ -19,8 +19,17 @@ export function useUser() {
   });
 
   const logout = async () => {
-    await api.get('/auth/logout'); // Backend clears the cookie
-    queryClient.setQueryData(['user'], null); // Instantly clears client cache
+    try {
+      // Do not let an unavailable API trap the user in the authenticated UI.
+      await api.get('/auth/logout', { timeout: 5000 });
+    } catch (error) {
+      console.warn('Server logout failed; clearing the local session.', error);
+    } finally {
+      queryClient.setQueryData(['user'], null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== 'user',
+      });
+    }
   };
 
   return { user, isLoading, isAuthenticated: !!user, logout };

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { CalendarPlus, Search, SlidersHorizontal } from "lucide-react";
 import { AppShell, Avatar, StatusBadge } from "@/components/app-shell";
@@ -11,8 +11,14 @@ import type { FollowUpRecord } from "@/services/appointment.service";
 
 export const Route = createFileRoute("/follow-ups")({
   head: () => ({ meta: [{ title: "Follow-ups - MediFlow" }] }),
-  component: FollowUpsPage,
+  component: FollowUpsLayout,
 });
+
+function FollowUpsLayout() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  if (pathname !== "/follow-ups") return <Outlet />;
+  return <FollowUpsPage />;
+}
 
 const handlerLabels: Record<string, string> = {
   doctor: "Doctor",
