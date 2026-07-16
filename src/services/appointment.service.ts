@@ -112,6 +112,10 @@ export type FollowUpRecord = {
     patientReminderMinutes?: number;
     bufferMinutes?: number;
     status?: string;
+    whatsAppConfirmationSent?: boolean;
+    confirmationMessageId?: string;
+    confirmationStatus?: string;
+    confirmationError?: string;
 };
 
 export class Appointment{
@@ -146,7 +150,7 @@ export class Appointment{
     }
     static async createFollowUp(data:CreateFollowUpPayload){
         const res=await api.post("/appointment/follow-up",data);
-        return res.data as { success:boolean; message:string; followUp:unknown };
+        return res.data as { success:boolean; message:string; followUp:FollowUpRecord };
     }
     static async getFollowUps(date?:string){
         const res=await api.get("/appointment/get-follow-up",{params:{date}});

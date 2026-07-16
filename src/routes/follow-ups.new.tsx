@@ -58,6 +58,7 @@ function NewFollowUpPage() {
   const [patientReminderMinutes, setPatientReminderMinutes] = useState(60);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [error, setError] = useState("");
+  const [deliveryWarning, setDeliveryWarning] = useState("");
   const [done, setDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: doctors = [], isLoading: isLoadingDoctors } = useDoctors();
@@ -152,7 +153,7 @@ function NewFollowUpPage() {
         ? (await CheckupService.findOrCreate({ name: checkupName.trim() || "Follow-up", specialityRequired: specialty || "General", bufferTime: bufferMinutes })).data._id
         : undefined);
 
-      await Appointment.createFollowUp({
+      const response = await Appointment.createFollowUp({
         patientId: patient._id,
         handlerType,
         doctorId: handlerType === "doctor" ? doctorId : undefined,
@@ -165,6 +166,10 @@ function NewFollowUpPage() {
         patientReminderMinutes: handlerType === "doctor" ? patientReminderMinutes : undefined,
         bufferMinutes,
       });
+      const deliveryStatus = response.followUp?.confirmationStatus;
+      if (deliveryStatus === "failed" || deliveryStatus === "skipped") {
+        setDeliveryWarning(response.followUp?.confirmationError || "The WhatsApp confirmation could not be sent.");
+      }
       setDone(true);
     } catch (err) {
       setError(getErrorMessage(err) ?? "Unable to create follow-up.");
@@ -183,6 +188,11 @@ function NewFollowUpPage() {
             </div>
             <h2 className="text-xl font-bold">Follow-up Created</h2>
             <p className="mt-1 text-sm text-muted-foreground">The follow-up has been saved successfully.</p>
+            {deliveryWarning && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                WhatsApp confirmation was not sent: {deliveryWarning}
+              </div>
+            )}
             <Button className="mt-5" onClick={() => navigate({ to: "/dashboard" })}>Back to Dashboard</Button>
           </Card>
         </div>
