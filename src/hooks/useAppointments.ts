@@ -1,18 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Appointment, type AppointmentRecord, type FollowUpRecord, type UpdateAppointmentPayload } from "@/services/appointment.service";
+import { Appointment, type AppointmentRecord, type AppointmentStatus, type FollowUpRecord, type UpdateAppointmentPayload } from "@/services/appointment.service";
 
-export const appointmentsQueryKey = (date?: string) => ["appointments", date ?? "all"] as const;
+type UseAppointmentsOptions = {
+  date?: string;
+  status?: AppointmentStatus | readonly AppointmentStatus[];
+  enabled?: boolean;
+};
+
+const statusQueryKey = (status?: AppointmentStatus | readonly AppointmentStatus[]) =>
+  Array.isArray(status) ? [...status].sort().join(",") : status ?? "all";
+
+export const appointmentsQueryKey = (date?: string, status?: AppointmentStatus | readonly AppointmentStatus[]) =>
+  ["appointments", date ?? "all", statusQueryKey(status)] as const;
 
 export const doctorAppointmentsQueryKey = (doctorId?: string, date?: string) => ["doctor-appointments", doctorId ?? "none", date ?? "all"] as const;
 export const myAppointmentsQueryKey = (date?: string) => ["my-appointments", date ?? "all"] as const;
 export const followUpsQueryKey = (date?: string) => ["follow-ups", date ?? "all"] as const;
 export const myFollowUpsQueryKey = (date?: string) => ["my-follow-ups", date ?? "all"] as const;
 
-export function useAppointments(date?: string, enabled = true) {
+export function useAppointments({ date, status, enabled = true }: UseAppointmentsOptions = {}) {
   return useQuery({
-    queryKey: appointmentsQueryKey(date),
+    queryKey: appointmentsQueryKey(date, status),
     queryFn: async () => {
-      const response = await Appointment.getAppointments(date);
+      const response = await Appointment.getAppointments(date, status);
       return Array.isArray(response?.appointments) ? response.appointments : [];
     },
     enabled,
@@ -74,6 +84,26 @@ export function useUpdateAppointment(date?: string) {
       queryClient.setQueryData<AppointmentRecord[]>(appointmentsQueryKey(date), (current = []) =>
         current.map((item) => (item._id === appointment._id ? appointment : item)),
       );
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["doctor-appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["my-appointments"] });
+    },
+  });
+}
+
+export function useUpdateAppointmentStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ appointmentId, status }: { appointmentId: string; status: AppointmentStatus }) =>
+      Appointment.updateAppointmentStatus(appointmentId, status),
+    onSuccess: (_response, { appointmentId, status }) => {
+      const updateCachedStatus = (current: AppointmentRecord[] | undefined) =>
+        current?.map((item) => (item._id === appointmentId ? { ...item, status } : item));
+
+      queryClient.setQueriesData<AppointmentRecord[]>({ queryKey: ["appointments"] }, updateCachedStatus);
+      queryClient.setQueriesData<AppointmentRecord[]>({ queryKey: ["doctor-appointments"] }, updateCachedStatus);
+      queryClient.setQueriesData<AppointmentRecord[]>({ queryKey: ["my-appointments"] }, updateCachedStatus);
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["doctor-appointments"] });
       queryClient.invalidateQueries({ queryKey: ["my-appointments"] });

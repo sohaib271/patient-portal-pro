@@ -10,10 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Search, SlidersHorizontal, Eye, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppointments, useDoctorAppointments, useUpdateAppointment } from "@/hooks/useAppointments";
+import { useAppointments, useDoctorAppointments, useUpdateAppointment, useUpdateAppointmentStatus } from "@/hooks/useAppointments";
 import { useDoctorProfile, useDoctors } from "@/hooks/useDoctors";
 import { useUser } from "@/hooks/useUser";
-import { Appointment, type AppointmentRecord, type AppointmentSlot, type AppointmentStatus } from "@/services/appointment.service";
+import { Appointment, type AppointmentRecord, type AppointmentSlot, type AppointmentStatus, type UpdateAppointmentPayload } from "@/services/appointment.service";
 import type { Doctor } from "@/services/doctor.service";
 
 export const Route = createFileRoute("/appointments")({
@@ -47,7 +47,7 @@ function AppointmentsList() {
   const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
   const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(isDoctor ? user?._id : undefined);
-  const adminAppointments = useAppointments(undefined, Boolean(user && !isDoctor));
+  const adminAppointments = useAppointments({ enabled: Boolean(user && !isDoctor) });
   const doctorAppointments = useDoctorAppointments(doctorProfile?._id, undefined, Boolean(user && isDoctor && doctorProfile?._id));
   const activeQuery = isDoctor ? doctorAppointments : adminAppointments;
   const { data: appointments = [], isLoading, isError, refetch } = activeQuery;
@@ -182,6 +182,7 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
   const [error, setError] = useState("");
   const { data: doctors = [], isLoading: isLoadingDoctors } = useDoctors();
   const updateAppointment = useUpdateAppointment();
+  const updateAppointmentStatus = useUpdateAppointmentStatus();
   const availableDoctors = useMemo(() => doctors.filter((doctor) => doctor.isAvailable !== false), [doctors]);
   const specialties = useMemo(() => Array.from(new Set(availableDoctors.map((doctor) => doctor.speciality).filter(Boolean))).sort(), [availableDoctors]);
   const filteredDoctors = useMemo(() => availableDoctors.filter((doctor) => !specialty || doctor.speciality === specialty), [availableDoctors, specialty]);
@@ -245,7 +246,6 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!appointment || isReadOnly) return;
-    const time = selectedSlot?.time ?? originalTime;
     setError("");
 
     if (canEditSchedule && scheduleFieldsChanged && !selectedSlot) {
@@ -260,23 +260,30 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
     }
 
     try {
-      const data = lockSchedule || isDelayedStatus
-        ? { status, reasonForVisit }
-        : {
-            status,
-            doctorId,
-            appointmentDate,
-            appointmentTime: time,
-            reasonForVisit,
-            bufferMinutes,
-            patientReminderMinutes: appointment.patientReminderMinutes ?? 60,
-            notificationChannel: appointment.notificationChannel,
-          };
+      const reasonChanged = reasonForVisit !== (appointment.reasonForVisit ?? "");
+      const doctorChanged = doctorId !== originalDoctorId;
+      const dateChanged = appointmentDate !== originalDate;
+      const bufferChanged = bufferMinutes !== originalBufferMinutes;
+      const timeChanged = Boolean(selectedSlot && selectedSlot.time !== originalTime);
+      const data: UpdateAppointmentPayload = {};
 
-      await updateAppointment.mutateAsync({
-        appointmentId: appointment._id,
-        data,
-      });
+      if (reasonChanged) data.reasonForVisit = reasonForVisit;
+      if (!lockSchedule && !isDelayedStatus) {
+        if (doctorChanged) data.doctorId = doctorId;
+        if (dateChanged) data.appointmentDate = appointmentDate;
+        if (timeChanged) data.appointmentTime = selectedSlot!.time;
+        if (bufferChanged) data.bufferMinutes = bufferMinutes;
+      }
+
+      if (Object.keys(data).length > 0) {
+        await updateAppointment.mutateAsync({
+          appointmentId: appointment._id,
+          data,
+        });
+      }
+      if (status !== appointment.status) {
+        await updateAppointmentStatus.mutateAsync({ appointmentId: appointment._id, status });
+      }
       onOpenChange(false);
     } catch (err) {
       setError(getErrorMessage(err) ?? "Unable to update appointment.");
@@ -393,7 +400,7 @@ function AppointmentEditor({ appointment, open, onOpenChange, lockSchedule = fal
             ) : (
               <>
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                <Button type="submit" disabled={updateAppointment.isPending || (canEditSchedule && (!doctorId || !appointmentDate || (scheduleFieldsChanged && !selectedSlot)))}>{updateAppointment.isPending ? "Saving..." : "Save Changes"}</Button>
+                <Button type="submit" disabled={updateAppointment.isPending || updateAppointmentStatus.isPending || (canEditSchedule && (!doctorId || !appointmentDate || (scheduleFieldsChanged && !selectedSlot)))}>{updateAppointment.isPending || updateAppointmentStatus.isPending ? "Saving..." : "Save Changes"}</Button>
               </>
             )}
           </DialogFooter>

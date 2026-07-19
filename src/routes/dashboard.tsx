@@ -38,7 +38,10 @@ function AdminDashboard() {
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
   const today = useMemo(() => getPakistanTodayValue(), []);
   const todayLabel = useMemo(() => formatLongDate(today), [today]);
-  const { data: todayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useAppointments(today);
+  const { data: todayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useAppointments({
+    date: today,
+    status: ["pending", "booked", "completed"],
+  });
   const normalizedAppointmentQuery = appointmentQuery.trim().toLowerCase();
   const filteredTodayAppointments = useMemo(() => {
     return todayAppointments.filter((appointment) => {

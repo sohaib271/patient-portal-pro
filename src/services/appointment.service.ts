@@ -69,7 +69,6 @@ export type UpdateAppointmentPayload = {
     reasonForVisit?: string;
     appointmentDate?: string;
     appointmentTime?: string;
-    status?: AppointmentStatus;
     patientReminderMinutes?: number;
     notificationChannel?: string[];
     bufferMinutes?: number;
@@ -140,8 +139,9 @@ export class Appointment{
         const res=await api.get("/appointment/my-appointments",{params:{date}});
         return res.data as { success:boolean; date?:string; count:number; appointments:AppointmentRecord[] };
     }
-    static async getAppointments(date?:string){
-        const res=await api.get("/appointment",{params:{date}});
+    static async getAppointments(date?:string,status?:AppointmentStatus | readonly AppointmentStatus[]){
+        const statusParam = Array.isArray(status) ? status.join(",") : status;
+        const res=await api.get("/appointment",{params:{date,status:statusParam}});
         return res.data as { success:boolean; date?:string; count:number; appointments:AppointmentRecord[] };
     }
     static async getAppointmentById(appointmentId:string){
@@ -162,6 +162,11 @@ export class Appointment{
     }
     static async updateAppointment(appointmentId:string,data:UpdateAppointmentPayload){
         const res=await api.patch(`/appointment/${appointmentId}`,data);
+        return res.data as { success:boolean; message:string; appointment:AppointmentRecord };
+    }
+
+    static async updateAppointmentStatus(appointmentId:string,status:AppointmentStatus){
+        const res=await api.patch(`/appointment/update-status/${appointmentId}`,undefined,{params:{status}});
         return res.data as { success:boolean; message:string; appointment:AppointmentRecord };
     }
 }
