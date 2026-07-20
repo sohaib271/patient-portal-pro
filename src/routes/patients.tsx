@@ -1,10 +1,11 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { AppShell, Avatar } from "@/components/app-shell";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, Search, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/hooks/useUser";
 import { useDoctorAppointments } from "@/hooks/useAppointments";
@@ -25,17 +26,19 @@ function PatientsLayout() {
 
 function PatientsList() {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
   const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(isDoctor ? user?._id : undefined);
   const { data: doctorAppointments = [], isLoading, isError, refetch } = useDoctorAppointments(doctorProfile?._id, undefined, Boolean(user && isDoctor && doctorProfile?._id));
   const adminPatientsQuery = useQuery({
-    queryKey: ["admin-patients"],
-    queryFn: () => Patient.getAllPatients(),
+    queryKey: ["admin-patients", page],
+    queryFn: () => Patient.getAllPatients(page, 6),
     enabled: Boolean(user && !isDoctor),
   });
   const doctorPatients = useMemo(() => buildDoctorPatients(doctorAppointments), [doctorAppointments]);
   const adminPatients = adminPatientsQuery.data?.patients ?? [];
+  const totalPages = Math.max(1, adminPatientsQuery.data?.totalPages ?? 1);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredDoctorPatients = useMemo(() => {
     return doctorPatients.filter((patient) => {
@@ -43,6 +46,10 @@ function PatientsList() {
       return !normalizedQuery || text.includes(normalizedQuery);
     });
   }, [doctorPatients, normalizedQuery]);
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const filteredAdminPatients = useMemo(() => {
     return adminPatients.filter((patient) => {
       const contact = getPatientContact(patient);
@@ -186,6 +193,18 @@ function PatientsList() {
           </table>
         </div>
       </Card>
+
+      {!isDoctor && totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+            <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+            Next <ChevronRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

@@ -52,8 +52,11 @@ const doctorNav = [
 ];
 
 export function Logo({ collapsed }: { collapsed?: boolean }) {
+  const { user } = useUser();
+  const homeRoute = user?.role === "patient" ? "/patient/dashboard" : "/dashboard";
+
   return (
-    <Link to="/dashboard" className="flex items-center gap-2 px-1">
+    <Link to={homeRoute} className="flex items-center gap-2 px-1">
       <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
         <Plus className="h-5 w-5" strokeWidth={3} />
       </div>

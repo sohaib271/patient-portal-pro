@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell, StatusBadge, Avatar } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Search, SlidersHorizontal, Eye, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, SlidersHorizontal, Eye, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppointments, useDoctorAppointments, useUpdateAppointment, useUpdateAppointmentStatus } from "@/hooks/useAppointments";
+import { useDoctorAppointments, useUpdateAppointment, useUpdateAppointmentStatus } from "@/hooks/useAppointments";
 import { useDoctorProfile, useDoctors } from "@/hooks/useDoctors";
 import { useUser } from "@/hooks/useUser";
 import { Appointment, type AppointmentRecord, type AppointmentSlot, type AppointmentStatus, type UpdateAppointmentPayload } from "@/services/appointment.service";
@@ -42,15 +43,26 @@ function AppointmentsList() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<(typeof statuses)[number]["value"]>("All");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<AppointmentRecord | null>(null);
   const [viewing, setViewing] = useState<AppointmentRecord | null>(null);
   const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
   const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(isDoctor ? user?._id : undefined);
-  const adminAppointments = useAppointments({ enabled: Boolean(user && !isDoctor) });
-  const doctorAppointments = useDoctorAppointments(doctorProfile?._id, undefined, Boolean(user && isDoctor && doctorProfile?._id));
-  const activeQuery = isDoctor ? doctorAppointments : adminAppointments;
-  const { data: appointments = [], isLoading, isError, refetch } = activeQuery;
+  const adminAppointmentsQuery = useQuery({
+    queryKey: ["admin-appointments-page", page, tab],
+    queryFn: () => Appointment.getAppointments(undefined, tab === "All" ? undefined : tab, page, 6),
+    enabled: Boolean(user && !isDoctor),
+  });
+  const doctorAppointmentsQuery = useQuery({
+    queryKey: ["doctor-appointments-page", doctorProfile?._id, page, tab],
+    queryFn: () => Appointment.getDoctorAppointments(doctorProfile?._id ?? "", undefined, page, 6),
+    enabled: Boolean(user && isDoctor && doctorProfile?._id),
+  });
+  const activeQuery = isDoctor ? doctorAppointmentsQuery : adminAppointmentsQuery;
+  const { data: appointmentsResponse, isLoading, isError, refetch } = activeQuery;
+  const appointments = appointmentsResponse?.appointments ?? [];
+  const totalPages = Math.max(1, appointmentsResponse?.totalPages ?? 1);
   const isLoadingAppointments = isLoadingUser || (isDoctor && isLoadingDoctorProfile) || isLoading;
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -63,12 +75,16 @@ function AppointmentsList() {
     });
   }, [appointments, normalizedQuery, tab]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [query, tab]);
+
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", to: "/dashboard" }, { label: isDoctor ? "My Appointments" : "Appointments" }]}>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{isDoctor ? "My Appointments" : "Appointments"}</h1>
-          <p className="text-sm text-muted-foreground">{appointments.length} total appointments</p>
+          <p className="text-sm text-muted-foreground">{appointmentsResponse?.count ?? appointments.length} total appointments</p>
         </div>
         {!isDoctor && (
           <Button asChild>
@@ -154,6 +170,18 @@ function AppointmentsList() {
           </table>
         </div>
       </Card>
+
+      {totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+            <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+            Next <ChevronRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
 
       <AppointmentDetails appointment={viewing} open={Boolean(viewing)} onOpenChange={(open) => !open && setViewing(null)} />
       <AppointmentEditor
