@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CalendarClock, Clock, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { CalendarClock, Clock, ImagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { useCreateDoctor, useDoctorProfile, useDoctors, useUpdateDoctor } from "@/hooks/useDoctors";
 import { useUser } from "@/hooks/useUser";
 import type { Doctor, DoctorSchedule, DoctorUser } from "@/services/doctor.service";
@@ -95,7 +96,7 @@ function DoctorsList() {
                     <tr key={doctor._id} className="hover:bg-muted/40 transition-colors">
                       <td className="py-3 pr-4">
                         <div className="flex items-center gap-3">
-                          <Avatar initials={getInitials(name)} />
+                          <Avatar initials={getInitials(name)} src={user?.image} alt={name} />
                           <div>
                             <div className="font-medium">{name}</div>
                             <div className="text-xs text-muted-foreground">{user?.email ?? "No email"}</div>
@@ -191,7 +192,7 @@ function MySchedulePage({ userId }: { userId: string }) {
         <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
           <Card className="p-5">
             <div className="flex items-center gap-3">
-              <Avatar initials={getInitials(getDoctorName(doctor))} />
+              <Avatar initials={getInitials(getDoctorName(doctor))} src={getDoctorUser(doctor)?.image} alt={getDoctorName(doctor)} />
               <div className="min-w-0">
                 <div className="truncate text-base font-semibold">{getDoctorName(doctor)}</div>
                 <div className="truncate text-xs text-muted-foreground">{getDoctorUser(doctor)?.email ?? "No email"}</div>
@@ -337,11 +338,14 @@ function AddDoctorDialog() {
     city: "",
     address: "",
     gender: "M",
+    image: "",
   });
   const [doctorForm, setDoctorForm] = useState({
     speciality: "",
     averageCheckUpTime: "15",
     isAvailable: true,
+    biography: "",
+    qualifications: "",
   });
   const [schedule, setSchedule] = useState<DoctorSchedule[]>([
     { day: "Monday", startTime: "09:00", endTime: "17:00" },
@@ -350,8 +354,8 @@ function AddDoctorDialog() {
   const reset = () => {
     setStep(1);
     setError("");
-    setUserForm({ firstName: "", lastName: "", email: "", phone: "", password: "", city: "", address: "", gender: "M" });
-    setDoctorForm({ speciality: "", averageCheckUpTime: "15", isAvailable: true });
+    setUserForm({ firstName: "", lastName: "", email: "", phone: "", password: "", city: "", address: "", gender: "M", image: "" });
+    setDoctorForm({ speciality: "", averageCheckUpTime: "15", isAvailable: true, biography: "", qualifications: "" });
     setSchedule([{ day: "Monday", startTime: "09:00", endTime: "17:00" }]);
   };
 
@@ -389,6 +393,8 @@ function AddDoctorDialog() {
           speciality: doctorForm.speciality.trim(),
           averageCheckUpTime: Number(doctorForm.averageCheckUpTime),
           isAvailable: doctorForm.isAvailable,
+          biography: doctorForm.biography.trim(),
+          qualifications: parseQualifications(doctorForm.qualifications),
           schedule,
         },
       });
@@ -425,6 +431,7 @@ function AddDoctorDialog() {
 
         {step === 1 ? (
           <form onSubmit={handleUserSubmit} className="space-y-4">
+            <ImageUpload value={userForm.image} name={[userForm.firstName, userForm.lastName].filter(Boolean).join(" ")} onChange={(image) => setUserForm({ ...userForm, image })} onError={setError} />
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="First name" value={userForm.firstName} onChange={(firstName) => setUserForm({ ...userForm, firstName })} required />
               <Field label="Last name" value={userForm.lastName} onChange={(lastName) => setUserForm({ ...userForm, lastName })} required />
@@ -456,6 +463,15 @@ function AddDoctorDialog() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Specialty" value={doctorForm.speciality} onChange={(speciality) => setDoctorForm({ ...doctorForm, speciality })} required />
               <Field label="Average checkup time (minutes)" type="number" min="1" value={doctorForm.averageCheckUpTime} onChange={(averageCheckUpTime) => setDoctorForm({ ...doctorForm, averageCheckUpTime })} required />
+            </div>
+            <div>
+              <Label>Biography</Label>
+              <Textarea className="mt-1.5 min-h-24" value={doctorForm.biography} onChange={(event) => setDoctorForm({ ...doctorForm, biography: event.target.value })} placeholder="Professional background, interests, and approach to patient care" maxLength={2000} />
+            </div>
+            <div>
+              <Label>Qualifications</Label>
+              <Textarea className="mt-1.5 min-h-24" value={doctorForm.qualifications} onChange={(event) => setDoctorForm({ ...doctorForm, qualifications: event.target.value })} placeholder={"One qualification per line\nMBBS — University name\nBoard Certified"} />
+              <p className="mt-1 text-xs text-muted-foreground">Enter one qualification per line.</p>
             </div>
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={doctorForm.isAvailable} onChange={(event) => setDoctorForm({ ...doctorForm, isAvailable: event.target.checked })} />
@@ -503,6 +519,9 @@ function EditDoctorDialog({ doctor }: { doctor: Doctor }) {
     speciality: doctor.speciality,
     averageCheckUpTime: String(doctor.averageCheckupTime),
     isAvailable: doctor.isAvailable !== false,
+    biography: doctor.biography ?? "",
+    qualifications: (doctor.qualifications ?? []).join("\n"),
+    image: getDoctorUser(doctor)?.image ?? "",
   });
   const [schedule, setSchedule] = useState<DoctorSchedule[]>(initialSchedule);
 
@@ -512,6 +531,9 @@ function EditDoctorDialog({ doctor }: { doctor: Doctor }) {
         speciality: doctor.speciality,
         averageCheckUpTime: String(doctor.averageCheckupTime),
         isAvailable: doctor.isAvailable !== false,
+        biography: doctor.biography ?? "",
+        qualifications: (doctor.qualifications ?? []).join("\n"),
+        image: getDoctorUser(doctor)?.image ?? "",
       });
       setSchedule(doctor.schedule?.length ? doctor.schedule : [{ day: "Monday", startTime: "09:00", endTime: "17:00" }]);
       setError("");
@@ -538,7 +560,10 @@ function EditDoctorDialog({ doctor }: { doctor: Doctor }) {
           speciality: form.speciality.trim(),
           averageCheckUpTime: Number(form.averageCheckUpTime),
           isAvailable: form.isAvailable,
+          biography: form.biography.trim(),
+          qualifications: parseQualifications(form.qualifications),
         },
+        userData: form.image && form.image !== getDoctorUser(doctor)?.image ? { image: form.image } : undefined,
         schedule,
       });
       setOpen(false);
@@ -567,8 +592,17 @@ function EditDoctorDialog({ doctor }: { doctor: Doctor }) {
         {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <ImageUpload value={form.image} name={getDoctorName(doctor)} onChange={(image) => setForm({ ...form, image })} onError={setError} />
           <Field label="Specialty" value={form.speciality} onChange={(speciality) => setForm({ ...form, speciality })} required />
           <Field label="Average checkup time (minutes)" type="number" min="1" value={form.averageCheckUpTime} onChange={(averageCheckUpTime) => setForm({ ...form, averageCheckUpTime })} required />
+          <div>
+            <Label>Biography</Label>
+            <Textarea className="mt-1.5 min-h-24" value={form.biography} onChange={(event) => setForm({ ...form, biography: event.target.value })} maxLength={2000} />
+          </div>
+          <div>
+            <Label>Qualifications</Label>
+            <Textarea className="mt-1.5 min-h-24" value={form.qualifications} onChange={(event) => setForm({ ...form, qualifications: event.target.value })} placeholder="One qualification per line" />
+          </div>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <input type="checkbox" checked={form.isAvailable} onChange={(event) => setForm({ ...form, isAvailable: event.target.checked })} />
             Available for appointments
@@ -607,4 +641,35 @@ function Field({ label, value, onChange, type = "text", required, min }: { label
       <Input className="mt-1.5" type={type} min={min} value={value} onChange={(event) => onChange(event.target.value)} required={required} />
     </div>
   );
+}
+
+function ImageUpload({ value, name, onChange, onError }: { value: string; name: string; onChange: (value: string) => void; onError: (message: string) => void }) {
+  const handleFile = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return onError("Please select a valid image file.");
+    if (file.size > 5 * 1024 * 1024) return onError("Profile image must be 5 MB or smaller.");
+    const reader = new FileReader();
+    reader.onload = () => { onError(""); onChange(String(reader.result ?? "")); };
+    reader.onerror = () => onError("Unable to read the selected image.");
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div>
+      <Label>Profile picture</Label>
+      <div className="mt-1.5 flex items-center gap-3 rounded-lg border border-border p-3">
+        <Avatar initials={getInitials(name || "Doctor")} src={value} alt={name || "Doctor profile preview"} />
+        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent">
+          <ImagePlus className="h-4 w-4" /> {value ? "Change image" : "Choose image"}
+          <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { handleFile(event.target.files?.[0]); event.target.value = ""; }} />
+        </label>
+        {value && value.startsWith("data:") && <Button type="button" variant="ghost" size="icon" onClick={() => onChange("")} aria-label="Remove selected image"><X className="h-4 w-4" /></Button>}
+        <span className="text-xs text-muted-foreground">JPG, PNG or WebP · max 5 MB</span>
+      </div>
+    </div>
+  );
+}
+
+function parseQualifications(value: string) {
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }

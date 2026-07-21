@@ -12,6 +12,8 @@ export type CreateDoctorPayload = {
   averageCheckUpTime: number;
   schedule?: DoctorSchedule[];
   isAvailable?: boolean;
+  biography?: string;
+  qualifications?: string[];
 };
 
 export type DoctorUser = {
@@ -33,12 +35,16 @@ export type Doctor = {
   averageCheckupTime: number;
   schedule?: DoctorSchedule[];
   isAvailable?: boolean;
+  biography?: string;
+  qualifications?: string[];
 };
 
 export type UpdateDoctorPayload = {
   speciality?: string;
   averageCheckUpTime?: number;
   isAvailable?: boolean;
+  biography?: string;
+  qualifications?: string[];
 };
 
 export class DoctorService {

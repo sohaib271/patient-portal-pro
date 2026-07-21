@@ -298,7 +298,7 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function Avatar({ initials, tone = "sky" }: { initials: string; tone?: "sky" | "rose" | "amber" | "emerald" | "violet" }) {
+export function Avatar({ initials, tone = "sky", src, alt = "" }: { initials: string; tone?: "sky" | "rose" | "amber" | "emerald" | "violet"; src?: string; alt?: string }) {
   const tones: Record<string, string> = {
     sky: "bg-sky-100 text-sky-700",
     rose: "bg-rose-100 text-rose-700",
@@ -307,8 +307,8 @@ export function Avatar({ initials, tone = "sky" }: { initials: string; tone?: "s
     violet: "bg-violet-100 text-violet-700",
   };
   return (
-    <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold", tones[tone])}>
-      {initials}
+    <div className={cn("grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold", tones[tone])}>
+      {src ? <img src={src} alt={alt} className="h-full w-full object-cover" /> : initials}
     </div>
   );
 }

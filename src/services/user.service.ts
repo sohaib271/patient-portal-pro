@@ -12,6 +12,8 @@ export type CreateUserPayload = {
   password: string;
 };
 
+export type UpdateUserPayload = Partial<Pick<CreateUserPayload, "firstName" | "lastName" | "city" | "gender" | "image" | "address" | "phone">>;
+
 export class UserService {
   static async createUser(data: CreateUserPayload) {
     const res = await api.post("/user/add", data);
@@ -20,6 +22,11 @@ export class UserService {
 
   static async deleteUser(userId: string) {
     const res = await api.delete(`/user/delete/${userId}`);
+    return res.data;
+  }
+
+  static async updateUser(userId: string, data: UpdateUserPayload) {
+    const res = await api.patch(`/user/update/${userId}`, data);
     return res.data;
   }
 }

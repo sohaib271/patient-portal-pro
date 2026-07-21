@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DoctorService, type Doctor, type DoctorSchedule, type UpdateDoctorPayload } from "@/services/doctor.service";
-import { UserService, type CreateUserPayload } from "@/services/user.service";
+import { UserService, type CreateUserPayload, type UpdateUserPayload } from "@/services/user.service";
 
 const doctorsQueryKey = ["doctors"] as const;
 const doctorQueryKey = (userId: string) => ["doctor", userId] as const;
@@ -12,6 +12,8 @@ type CreateDoctorInput = {
     averageCheckUpTime: number;
     schedule?: DoctorSchedule[];
     isAvailable?: boolean;
+    biography?: string;
+    qualifications?: string[];
   };
 };
 
@@ -19,6 +21,7 @@ type UpdateDoctorInput = {
   userId: string;
   data: UpdateDoctorPayload;
   schedule?: DoctorSchedule[];
+  userData?: UpdateUserPayload;
 };
 
 function replaceDoctor(doctors: Doctor[] | undefined, updatedDoctor: Doctor) {
@@ -82,8 +85,11 @@ export function useUpdateDoctor() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ userId, data, schedule }: UpdateDoctorInput) => {
-      await DoctorService.updateDoctor(userId, data);
+    mutationFn: async ({ userId, data, schedule, userData }: UpdateDoctorInput) => {
+      await Promise.all([
+        DoctorService.updateDoctor(userId, data),
+        userData && Object.keys(userData).length ? UserService.updateUser(userId, userData) : Promise.resolve(),
+      ]);
       if (schedule) await DoctorService.updateSchedule(userId, schedule);
       const response = await DoctorService.getDoctorById(userId);
       return response.doctor as Doctor;

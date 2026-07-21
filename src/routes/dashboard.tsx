@@ -41,7 +41,11 @@ function AdminDashboard() {
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Staff";
   const today = useMemo(() => getPakistanTodayValue(), []);
   const todayLabel = useMemo(() => formatLongDate(today), [today]);
-  const { data: todayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useAppointments({
+  const {
+    data: todayAppointments = [],
+    isLoading: isLoadingTodayAppointments,
+    isError: todayAppointmentsError,
+  } = useAppointments({
     date: today,
     status: ["pending", "booked", "completed"],
   });
@@ -65,25 +69,35 @@ function AdminDashboard() {
         getDoctorName(appointment),
         getSpecialty(appointment),
         appointment._id,
-      ].join(" ").toLowerCase();
+      ]
+        .join(" ")
+        .toLowerCase();
       return !normalizedAppointmentQuery || text.includes(normalizedAppointmentQuery);
     });
   }, [normalizedAppointmentQuery, todayAppointments]);
   const doctorStats = useMemo(() => buildDoctorStats(todayAppointments), [todayAppointments]);
-  const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed").length;
-  const remainingToday = todayAppointments.filter((appointment) => !["completed", "cancelled"].includes(appointment.status ?? "")).length;
+  const completedToday = todayAppointments.filter(
+    (appointment) => appointment.status === "completed",
+  ).length;
+  const remainingToday = todayAppointments.filter(
+    (appointment) => !["completed", "cancelled"].includes(appointment.status ?? ""),
+  ).length;
   const totalPatients = patientsResponse?.count ?? 0;
   const availableDoctors = doctors.filter((doctor) => doctor.isAvailable !== false).length;
   const unavailableDoctors = Math.max(doctors.length - availableDoctors, 0);
   const followUps = followUpsResponse?.followUps ?? [];
   const completedFollowUps = followUps.filter((followUp) => followUp.status === "completed").length;
-  const followUpPercent = followUps.length ? Math.round((completedFollowUps / followUps.length) * 100) : 0;
+  const followUpPercent = followUps.length
+    ? Math.round((completedFollowUps / followUps.length) * 100)
+    : 0;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Good morning, {displayName}</h1>
-        <p className="text-sm text-muted-foreground">{todayLabel} - Here's what's happening today.</p>
+        <p className="text-sm text-muted-foreground">
+          {todayLabel} - Here's what's happening today.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -91,22 +105,43 @@ function AdminDashboard() {
           <Card className="overflow-hidden p-5">
             <h3 className="mb-3 text-sm font-semibold text-foreground">Quick Actions</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Link to="/appointments/new" className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5">
+              <Link
+                to="/appointments/new"
+                className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5"
+              >
                 <Plus className="mb-6 h-6 w-6" />
                 <div className="font-semibold">Book a New Appointment</div>
-                <div className="text-xs opacity-90">{todayAppointments.length} appointments scheduled for today</div>
+                <div className="text-xs opacity-90">
+                  {todayAppointments.length} appointments scheduled for today
+                </div>
                 <CalendarCheck className="absolute -right-2 -bottom-2 h-20 w-20 opacity-10" />
               </Link>
-              <Link to="/patients" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary"><UserPlus className="h-5 w-5" /></div>
+              <Link
+                to="/patients"
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <UserPlus className="h-5 w-5" />
+                </div>
                 <div className="text-sm font-medium">Register New Patient</div>
               </Link>
-              <Link to="/doctors" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarRange className="h-5 w-5" /></div>
+              <Link
+                to="/doctors"
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <CalendarRange className="h-5 w-5" />
+                </div>
                 <div className="text-sm font-medium">View Doctor Schedules</div>
               </Link>
-              <Link to="/follow-ups/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-5 w-5" /></div>
+              <Link
+                to="/follow-ups/new"
+                search={{ appointmentId: undefined }}
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <CalendarPlus className="h-5 w-5" />
+                </div>
                 <div className="text-sm font-medium">Create Follow-up</div>
               </Link>
             </div>
@@ -116,46 +151,98 @@ function AdminDashboard() {
             <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h3 className="text-sm font-semibold">Today's Appointments</h3>
-                <p className="text-xs text-muted-foreground">{todayAppointments.length} appointments scheduled</p>
+                <p className="text-xs text-muted-foreground">
+                  {todayAppointments.length} appointments scheduled
+                </p>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={appointmentQuery} onChange={(event) => setAppointmentQuery(event.target.value)} placeholder="Search by name or ID..." className="pl-9 h-9 w-56" />
+                <Input
+                  value={appointmentQuery}
+                  onChange={(event) => setAppointmentQuery(event.target.value)}
+                  placeholder="Search by name or ID..."
+                  className="pl-9 h-9 w-56"
+                />
               </div>
             </div>
             <div className="mb-4 flex flex-wrap gap-2">
               {doctorStats.map((doctor, index) => (
-                <span key={index} className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${doctor.tone}`}>
+                <span
+                  key={index}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${doctor.tone}`}
+                >
                   {doctor.name} <span className="opacity-70">{doctor.count}</span>
                 </span>
               ))}
             </div>
             <div className="divide-y divide-border">
               {isLoadingTodayAppointments ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Loading today's appointments...</div>
-              ) : todayAppointmentsError ? (
-                <div className="py-8 text-center text-sm text-destructive">Unable to load today's appointments.</div>
-              ) : filteredTodayAppointments.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">No appointments found for today.</div>
-              ) : filteredTodayAppointments.slice(0, 6).map((appointment) => (
-                <div key={appointment._id} className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-3 py-3">
-                  <div className="text-sm font-medium text-muted-foreground">{getAppointmentTimeLabel(appointment)}</div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{getPatientName(appointment)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{getPatientCode(appointment)} - {getDoctorName(appointment)} - {getSpecialty(appointment)}</div>
-                  </div>
-                  <StatusBadge status={formatStatus(appointment.status)} />
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Loading today's appointments...
                 </div>
-              ))}
+              ) : todayAppointmentsError ? (
+                <div className="py-8 text-center text-sm text-destructive">
+                  Unable to load today's appointments.
+                </div>
+              ) : filteredTodayAppointments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No appointments found for today.
+                </div>
+              ) : (
+                filteredTodayAppointments.slice(0, 6).map((appointment) => (
+                  <div
+                    key={appointment._id}
+                    className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-3 py-3"
+                  >
+                    <div className="text-sm font-medium text-muted-foreground">
+                      {getAppointmentTimeLabel(appointment)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">
+                        {getPatientName(appointment)}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {getPatientCode(appointment)} - {getDoctorName(appointment)} -{" "}
+                        {getSpecialty(appointment)}
+                      </div>
+                    </div>
+                    <StatusBadge status={formatStatus(appointment.status)} />
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>
 
         <div className="space-y-4">
-          <StatCard icon={CalendarCheck} title="Today's Appointments" value={todayAppointments.length} a={{ label: "Completed", value: completedToday }} b={{ label: "Remaining", value: remainingToday }} />
-          <StatCard icon={Users} title="Patients" value={totalPatients} a={{ label: "Registered", value: totalPatients }} b={{ label: "Today", value: todayAppointments.length }} />
-          <StatCard icon={Stethoscope} title="Doctors" value={doctors.length} a={{ label: "Available", value: availableDoctors }} b={{ label: "Unavailable", value: unavailableDoctors }} />
-          <StatCard icon={TrendingUp} title="Follow-up Checkups" value={`${followUpPercent}%`} a={{ label: "Planned", value: followUps.length }} b={{ label: "Completed", value: completedFollowUps }} />
+          <StatCard
+            icon={CalendarCheck}
+            title="Today's Appointments"
+            value={todayAppointments.length}
+            a={{ label: "Completed", value: completedToday }}
+            b={{ label: "Remaining", value: remainingToday }}
+          />
+          <StatCard
+            icon={Users}
+            title="Patients"
+            value={totalPatients}
+            a={{ label: "Registered", value: totalPatients }}
+            b={{ label: "Today", value: todayAppointments.length }}
+          />
+          <StatCard
+            icon={Stethoscope}
+            title="Doctors"
+            value={doctors.length}
+            a={{ label: "Available", value: availableDoctors }}
+            b={{ label: "Unavailable", value: unavailableDoctors }}
+          />
+          <StatCard
+            icon={TrendingUp}
+            title="Follow-up Checkups"
+            value={`${followUpPercent}%`}
+            a={{ label: "Planned", value: followUps.length }}
+            b={{ label: "Completed", value: completedFollowUps }}
+          />
         </div>
       </div>
     </AppShell>
@@ -167,12 +254,31 @@ function DoctorDashboard() {
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Savannah";
   const today = useMemo(() => getPakistanTodayValue(), []);
   const todayLabel = useMemo(() => formatLongDate(today), [today]);
-  const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(user?.role === "doctor" ? user?._id : undefined);
+  const { data: doctorProfile, isLoading: isLoadingDoctorProfile } = useDoctorProfile(
+    user?.role === "doctor" ? user?._id : undefined,
+  );
   const doctorProfileId = doctorProfile?._id;
-  const { data: rawTodayAppointments = [], isLoading: isLoadingTodayAppointments, isError: todayAppointmentsError } = useDoctorAppointments(doctorProfileId, today, Boolean(user && user.role === "doctor" && doctorProfileId));
-  const { data: myAppointments = [], isLoading: isLoadingMyAppointments, isError: myAppointmentsError } = useDoctorAppointments(doctorProfileId, undefined, Boolean(user && user.role === "doctor" && doctorProfileId));
+  const {
+    data: rawTodayAppointments = [],
+    isLoading: isLoadingTodayAppointments,
+    isError: todayAppointmentsError,
+  } = useDoctorAppointments(
+    doctorProfileId,
+    today,
+    Boolean(user && user.role === "doctor" && doctorProfileId),
+  );
+  const {
+    data: myAppointments = [],
+    isLoading: isLoadingMyAppointments,
+    isError: myAppointmentsError,
+  } = useDoctorAppointments(
+    doctorProfileId,
+    undefined,
+    Boolean(user && user.role === "doctor" && doctorProfileId),
+  );
   const todayAppointments = useMemo(
-    () => rawTodayAppointments.filter((appointment) => getAppointmentDateValue(appointment) === today),
+    () =>
+      rawTodayAppointments.filter((appointment) => getAppointmentDateValue(appointment) === today),
     [rawTodayAppointments, today],
   );
   const upcomingAppointments = useMemo(() => {
@@ -181,20 +287,34 @@ function DoctorDashboard() {
     return myAppointments
       .filter((appointment) => {
         if (["completed", "cancelled", "delayed"].includes(appointment.status ?? "")) return false;
-        const appointmentTime = new Date(appointment.estimatedTurnTime ?? appointment.appointmentDate).getTime();
+        const appointmentTime = new Date(
+          appointment.estimatedTurnTime ?? appointment.appointmentDate,
+        ).getTime();
         return appointmentTime >= Date.now() && appointmentTime < nextSevenDaysEnd;
       })
-      .sort((a, b) => new Date(a.estimatedTurnTime ?? a.appointmentDate).getTime() - new Date(b.estimatedTurnTime ?? b.appointmentDate).getTime());
+      .sort(
+        (a, b) =>
+          new Date(a.estimatedTurnTime ?? a.appointmentDate).getTime() -
+          new Date(b.estimatedTurnTime ?? b.appointmentDate).getTime(),
+      );
   }, [myAppointments, today]);
-  const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed").length;
-  const remainingToday = todayAppointments.filter((appointment) => !["completed", "cancelled"].includes(appointment.status ?? "")).length;
-  const activePatientCount = new Set(myAppointments.map((appointment) => getPatientObject(appointment)?._id).filter(Boolean)).size;
+  const completedToday = todayAppointments.filter(
+    (appointment) => appointment.status === "completed",
+  ).length;
+  const remainingToday = todayAppointments.filter(
+    (appointment) => !["completed", "cancelled"].includes(appointment.status ?? ""),
+  ).length;
+  const activePatientCount = new Set(
+    myAppointments.map((appointment) => getPatientObject(appointment)?._id).filter(Boolean),
+  ).size;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Good morning, Dr. {displayName}</h1>
-        <p className="text-sm text-muted-foreground">{todayLabel} - Here's what's happening today.</p>
+        <p className="text-sm text-muted-foreground">
+          {todayLabel} - Here's what's happening today.
+        </p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -202,23 +322,42 @@ function DoctorDashboard() {
           <Card className="overflow-hidden p-5">
             <h3 className="mb-3 text-sm font-semibold text-foreground">Quick Actions</h3>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.9fr)]">
-              <Link to="/doctors" className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5">
+              <Link
+                to="/doctors"
+                className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-primary to-sky-500 p-4 text-primary-foreground transition-transform hover:-translate-y-0.5"
+              >
                 <ClipboardPenLine className="mb-6 h-6 w-6" />
                 <div className="font-semibold">Edit Your Schedule</div>
                 <div className="text-xs opacity-90">Click here to update your schedule</div>
                 <CalendarCheck className="absolute -right-2 -bottom-2 h-20 w-20 opacity-10" />
               </Link>
               <div className="grid gap-3">
-                <Link to="/appointments/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-4 w-4" /></div>
+                <Link
+                  to="/appointments/new"
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary">
+                    <CalendarPlus className="h-4 w-4" />
+                  </div>
                   <div className="text-sm font-medium">Book a New Appointment</div>
                 </Link>
-                <Link to="/patients" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><UserPlus className="h-4 w-4" /></div>
+                <Link
+                  to="/patients"
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary">
+                    <UserPlus className="h-4 w-4" />
+                  </div>
                   <div className="text-sm font-medium">Register a New Patient</div>
                 </Link>
-                <Link to="/follow-ups/new" className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary"><CalendarPlus className="h-4 w-4" /></div>
+                <Link
+                  to="/follow-ups/new"
+                  search={{ appointmentId: undefined }}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:shadow-sm transition-all"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-soft text-primary">
+                    <CalendarPlus className="h-4 w-4" />
+                  </div>
                   <div className="text-sm font-medium">Create Follow-up</div>
                 </Link>
               </div>
@@ -228,35 +367,63 @@ function DoctorDashboard() {
           <Card className="p-5">
             <div className="mb-4">
               <h3 className="text-sm font-semibold">Today's Patients</h3>
-              <p className="text-xs text-muted-foreground">{todayAppointments.length} visited clinic today</p>
+              <p className="text-xs text-muted-foreground">
+                {todayAppointments.length} visited clinic today
+              </p>
             </div>
             <div className="divide-y divide-border">
               {isLoadingDoctorProfile || isLoadingTodayAppointments ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Loading today's patients...</div>
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Loading today's patients...
+                </div>
               ) : todayAppointmentsError ? (
-                <div className="py-8 text-center text-sm text-destructive">Unable to load today's patients.</div>
+                <div className="py-8 text-center text-sm text-destructive">
+                  Unable to load today's patients.
+                </div>
               ) : todayAppointments.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">No patients visited today.</div>
-              ) : todayAppointments.map((appointment) => (
-                <div key={appointment._id} className="grid gap-3 py-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
-                  <div className="w-14 rounded-lg bg-muted px-2 py-1.5 text-center">
-                    <div className="text-sm font-bold leading-tight">{getAppointmentTimeParts(appointment).time}</div>
-                    <div className="text-[10px] text-muted-foreground">{getAppointmentTimeParts(appointment).period}</div>
-                  </div>
-                  <div className="flex min-w-0 items-start gap-3">
-                    <Avatar initials={getInitials(getPatientName(appointment))} />
-                    <div className="min-w-0">
-                      <div className="font-medium leading-tight">{getPatientName(appointment)}</div>
-                      <div className="truncate text-xs text-muted-foreground">{getPatientCode(appointment)} - {getCheckupName(appointment)}</div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">{getPatientContact(appointment)}</div>
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No patients visited today.
+                </div>
+              ) : (
+                todayAppointments.map((appointment) => (
+                  <div
+                    key={appointment._id}
+                    className="grid gap-3 py-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center"
+                  >
+                    <div className="w-14 rounded-lg bg-muted px-2 py-1.5 text-center">
+                      <div className="text-sm font-bold leading-tight">
+                        {getAppointmentTimeParts(appointment).time}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {getAppointmentTimeParts(appointment).period}
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Avatar initials={getInitials(getPatientName(appointment))} />
+                      <div className="min-w-0">
+                        <div className="font-medium leading-tight">
+                          {getPatientName(appointment)}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {getPatientCode(appointment)} - {getCheckupName(appointment)}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {getPatientContact(appointment)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                      <StatusBadge status={formatStatus(appointment.status)} />
+                      <Link
+                        to="/patients"
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        View Details
+                      </Link>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-                    <StatusBadge status={formatStatus(appointment.status)} />
-                    <Link to="/patients" className="text-xs font-medium text-primary hover:underline">View Details</Link>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </Card>
 
@@ -267,43 +434,95 @@ function DoctorDashboard() {
             </div>
             <div className="divide-y divide-border">
               {isLoadingDoctorProfile || isLoadingMyAppointments ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Loading upcoming appointments...</div>
-              ) : myAppointmentsError ? (
-                <div className="py-8 text-center text-sm text-destructive">Unable to load upcoming appointments.</div>
-              ) : upcomingAppointments.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">No upcoming appointments found.</div>
-              ) : upcomingAppointments.slice(0, 6).map((appointment) => (
-                <div key={appointment._id} className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 py-3">
-                  <div className="rounded-lg bg-primary-soft px-2 py-1 text-center text-xs font-semibold text-primary">{getShortDateLabel(appointment)}</div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{getPatientName(appointment)}</div>
-                    <div className="truncate text-xs text-muted-foreground">{getAppointmentTimeLabel(appointment)} - {getSpecialty(appointment)}</div>
-                  </div>
-                  <StatusBadge status={formatStatus(appointment.status)} />
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Loading upcoming appointments...
                 </div>
-              ))}
+              ) : myAppointmentsError ? (
+                <div className="py-8 text-center text-sm text-destructive">
+                  Unable to load upcoming appointments.
+                </div>
+              ) : upcomingAppointments.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No upcoming appointments found.
+                </div>
+              ) : (
+                upcomingAppointments.slice(0, 6).map((appointment) => (
+                  <div
+                    key={appointment._id}
+                    className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 py-3"
+                  >
+                    <div className="rounded-lg bg-primary-soft px-2 py-1 text-center text-xs font-semibold text-primary">
+                      {getShortDateLabel(appointment)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {getPatientName(appointment)}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {getAppointmentTimeLabel(appointment)} - {getSpecialty(appointment)}
+                      </div>
+                    </div>
+                    <StatusBadge status={formatStatus(appointment.status)} />
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>
 
         <div className="space-y-4">
-          <StatCard icon={CalendarDays} title="Today's Appointments" value={todayAppointments.length} a={{ label: "Completed", value: completedToday }} b={{ label: "Remaining", value: remainingToday }} />
-          <StatCard icon={Users} title="Patients" value={activePatientCount} a={{ label: "Visited Today", value: todayAppointments.length }} b={{ label: "With Appointments", value: activePatientCount }} />
-          <StatCard icon={CalendarCheck} title="Expected Appointments" value={upcomingAppointments.length} a={{ label: "Expected Today", value: remainingToday }} b={{ label: "Next 7 Days", value: upcomingAppointments.length }} />
+          <StatCard
+            icon={CalendarDays}
+            title="Today's Appointments"
+            value={todayAppointments.length}
+            a={{ label: "Completed", value: completedToday }}
+            b={{ label: "Remaining", value: remainingToday }}
+          />
+          <StatCard
+            icon={Users}
+            title="Patients"
+            value={activePatientCount}
+            a={{ label: "Visited Today", value: todayAppointments.length }}
+            b={{ label: "With Appointments", value: activePatientCount }}
+          />
+          <StatCard
+            icon={CalendarCheck}
+            title="Expected Appointments"
+            value={upcomingAppointments.length}
+            a={{ label: "Expected Today", value: remainingToday }}
+            b={{ label: "Next 7 Days", value: upcomingAppointments.length }}
+          />
 
           <Card className="p-5">
             <h3 className="mb-3 text-sm font-semibold">Today's Patient Alerts</h3>
             <div className="space-y-2">
-              {todayAppointments.filter((appointment) => appointment.status === "delayed" || appointment.status === "cancelled").length === 0 ? (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">No appointment alerts for today.</div>
-              ) : todayAppointments
-                .filter((appointment) => appointment.status === "delayed" || appointment.status === "cancelled")
-                .map((appointment) => (
-                  <div key={appointment._id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs font-semibold text-amber-900">{getPatientName(appointment)}</div>
-                    <p className="mt-1 text-xs leading-relaxed text-amber-800">Appointment is {formatStatus(appointment.status).toLowerCase()}.</p>
-                  </div>
-                ))}
+              {todayAppointments.filter(
+                (appointment) =>
+                  appointment.status === "delayed" || appointment.status === "cancelled",
+              ).length === 0 ? (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  No appointment alerts for today.
+                </div>
+              ) : (
+                todayAppointments
+                  .filter(
+                    (appointment) =>
+                      appointment.status === "delayed" || appointment.status === "cancelled",
+                  )
+                  .map((appointment) => (
+                    <div
+                      key={appointment._id}
+                      className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                    >
+                      <div className="text-xs font-semibold text-amber-900">
+                        {getPatientName(appointment)}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                        Appointment is {formatStatus(appointment.status).toLowerCase()}.
+                      </p>
+                    </div>
+                  ))
+              )}
             </div>
           </Card>
         </div>
@@ -324,7 +543,11 @@ function buildDoctorStats(appointments: AppointmentRecord[]) {
 
   appointments.forEach((appointment) => {
     const doctorId = getDoctorId(appointment) || getDoctorName(appointment);
-    const current = counts.get(doctorId) ?? { name: getDoctorName(appointment), total: 0, completed: 0 };
+    const current = counts.get(doctorId) ?? {
+      name: getDoctorName(appointment),
+      total: 0,
+      completed: 0,
+    };
     current.total += 1;
     if (appointment.status === "completed") current.completed += 1;
     counts.set(doctorId, current);
@@ -355,7 +578,9 @@ function getPatientObject(appointment: AppointmentRecord) {
 }
 
 function getDoctorId(appointment: AppointmentRecord) {
-  return typeof appointment.doctorId === "object" ? appointment.doctorId._id : appointment.doctorId ?? "";
+  return typeof appointment.doctorId === "object"
+    ? appointment.doctorId._id
+    : (appointment.doctorId ?? "");
 }
 
 function getDoctorName(appointment: AppointmentRecord) {
@@ -398,11 +623,14 @@ function getAppointmentTimeParts(appointment: AppointmentRecord) {
 }
 
 function getShortDateLabel(appointment: AppointmentRecord) {
-  return new Date(appointment.estimatedTurnTime ?? appointment.appointmentDate).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "Asia/Karachi",
-  });
+  return new Date(appointment.estimatedTurnTime ?? appointment.appointmentDate).toLocaleDateString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      timeZone: "Asia/Karachi",
+    },
+  );
 }
 
 function getAppointmentDateValue(appointment: AppointmentRecord) {
@@ -420,7 +648,14 @@ function getAppointmentDateValue(appointment: AppointmentRecord) {
 }
 
 function getInitials(name: string) {
-  return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "PT";
+  return (
+    name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "PT"
+  );
 }
 
 function formatStatus(status?: string) {
