@@ -22,7 +22,7 @@ export function useAppointments({ date, status, enabled = true }: UseAppointment
   return useQuery({
     queryKey: appointmentsQueryKey(date, status),
     queryFn: async () => {
-      const response = await Appointment.getAppointments(date, status);
+      const response = await Appointment.getAppointments(date, status, 1, 6);
       return Array.isArray(response?.appointments) ? response.appointments : [];
     },
     enabled,
@@ -56,7 +56,7 @@ export function useFollowUps(date?: string, enabled = true) {
   return useQuery({
     queryKey: followUpsQueryKey(date),
     queryFn: async () => {
-      const response = await Appointment.getFollowUps(date);
+      const response = await Appointment.getFollowUps(date, 1, 6);
       return Array.isArray(response?.followUps) ? response.followUps as FollowUpRecord[] : [];
     },
     enabled,
@@ -67,7 +67,7 @@ export function useMyFollowUps(date?: string, enabled = true) {
   return useQuery({
     queryKey: myFollowUpsQueryKey(date),
     queryFn: async () => {
-      const response = await Appointment.getMyFollowUps(date);
+      const response = await Appointment.getMyFollowUps(date, 1, 6);
       return Array.isArray(response?.followUps) ? response.followUps as FollowUpRecord[] : [];
     },
     enabled,

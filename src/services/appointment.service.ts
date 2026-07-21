@@ -118,9 +118,9 @@ export type FollowUpRecord = {
 };
 
 export class Appointment{
-    static async getDoctorAppointments(doctorId:string,date?:string){
-        const res = await api.get(`/appointment/doctor/${doctorId}`,{params:{date}});
-        return res.data as { success:boolean; message?:string; appointments:AppointmentRecord[] };
+    static async getDoctorAppointments(doctorId:string,date?:string,page?:number,limit=6){
+        const res = await api.get(`/appointment/doctor/${doctorId}`,{params:{date,page,limit}});
+        return res.data as { success:boolean; message?:string; count?:number; page?:number; limit?:number; totalPages?:number; appointments:AppointmentRecord[] };
     }
 
     static async getDoctorAvailability(doctorId:string,date:string,bufferMinutes?:number,excludeAppointmentId?:string,signal?:AbortSignal){
@@ -139,10 +139,10 @@ export class Appointment{
         const res=await api.get("/appointment/my-appointments",{params:{date}});
         return res.data as { success:boolean; date?:string; count:number; appointments:AppointmentRecord[] };
     }
-    static async getAppointments(date?:string,status?:AppointmentStatus | readonly AppointmentStatus[]){
+    static async getAppointments(date?:string,status?:AppointmentStatus | readonly AppointmentStatus[], page?: number, limit = 6){
         const statusParam = Array.isArray(status) ? status.join(",") : status;
-        const res=await api.get("/appointment",{params:{date,status:statusParam}});
-        return res.data as { success:boolean; date?:string; count:number; appointments:AppointmentRecord[] };
+        const res=await api.get("/appointment",{params:{date,status:statusParam,page,limit}});
+        return res.data as { success:boolean; date?:string; count:number; page?:number; limit?:number; totalPages?:number; appointments:AppointmentRecord[] };
     }
     static async getAppointmentById(appointmentId:string){
         const res=await api.get(`/appointment/${appointmentId}`);
@@ -152,13 +152,13 @@ export class Appointment{
         const res=await api.post("/appointment/follow-up",data);
         return res.data as { success:boolean; message:string; followUp:FollowUpRecord };
     }
-    static async getFollowUps(date?:string){
-        const res=await api.get("/appointment/get-follow-up",{params:{date}});
-        return res.data as { success:boolean; date?:string; count:number; followUps:FollowUpRecord[] };
+    static async getFollowUps(date?:string,page?:number,limit=6){
+        const res=await api.get("/appointment/get-follow-up",{params:{date,page,limit}});
+        return res.data as { success:boolean; date?:string; count:number; page?:number; limit?:number; totalPages?:number; followUps:FollowUpRecord[] };
     }
-    static async getMyFollowUps(date?:string){
-        const res=await api.get("/appointment/my-follow-ups",{params:{date}});
-        return res.data as { success:boolean; date?:string; count:number; followUps:FollowUpRecord[] };
+    static async getMyFollowUps(date?:string,page?:number,limit=6){
+        const res=await api.get("/appointment/my-follow-ups",{params:{date,page,limit}});
+        return res.data as { success:boolean; date?:string; count:number; page?:number; limit?:number; totalPages?:number; followUps:FollowUpRecord[] };
     }
     static async updateAppointment(appointmentId:string,data:UpdateAppointmentPayload){
         const res=await api.patch(`/appointment/${appointmentId}`,data);

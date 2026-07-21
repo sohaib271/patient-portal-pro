@@ -49,9 +49,9 @@ export type AppointmentPatientRegistration = {
 };
 
 export class Patient{
-    static async getAllPatients(){
-        const res=await api.get("/patient/get-all");
-        return res.data as { success:boolean; patients:PatientRecord[] };
+    static async getAllPatients(page?: number, limit = 6){
+        const res=await api.get("/patient/get-all", { params: { page, limit } });
+        return res.data as { success:boolean; patients:PatientRecord[]; count?:number; page?:number; limit?:number; totalPages?:number };
     }
 
     static async searchByPhone(phone:string){
@@ -66,6 +66,10 @@ export class Patient{
 
     static async addOrSearchContact(data:PatientContact){
         const res=await api.post("/patient/contact",data);
+        return res.data;
+    }
+    static async getMyDoctors(){
+        const res=await api.get("/patient/my-doctors");
         return res.data;
     }
 

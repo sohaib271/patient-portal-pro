@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Building2, Bell, Users } from "lucide-react";
-import { useState } from "react";
+import { Building2, Bell, Users, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ClinicSettingsService } from "@/services/clinic-settings.service";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings — MediFlow" }] }),
@@ -45,34 +46,70 @@ function SettingsPage() {
 }
 
 function ClinicInfo() {
+  const [form, setForm] = useState({
+    clinicName: "",
+    phoneNumber: "",
+    emailAddress: "",
+    website: "",
+    address: "",
+  });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    ClinicSettingsService.getSettings().then((response) => {
+      setForm({
+        clinicName: response.settings?.clinicName ?? "",
+        phoneNumber: response.settings?.phoneNumber ?? "",
+        emailAddress: response.settings?.emailAddress ?? "",
+        website: response.settings?.website ?? "",
+        address: response.settings?.address ?? "",
+      });
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await ClinicSettingsService.updateSettings(form, logoFile ?? undefined);
+      setMessage("Clinic settings saved successfully.");
+      setLogoFile(null);
+    } catch (error) {
+      setMessage("Unable to save clinic settings right now.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Clinic Information</h2>
         <p className="text-sm text-muted-foreground">Update your clinic's details and contact information.</p>
       </div>
-      <div>
-        <div className="mb-3 text-sm font-semibold">Basic Information</div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Clinic Name" defaultValue="Greenway Medical Clinic" />
-          <Field label="Tax ID / NPI" defaultValue="1234567890" />
-          <Field label="Founded Year" defaultValue="2014" />
-          <Field label="Timezone" defaultValue="America/Chicago (CST)" />
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2 rounded-lg border border-dashed border-border p-4">
+          <div className="mb-2 text-sm font-semibold">Clinic Logo</div>
+          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-border bg-muted/30 p-4 text-center text-sm text-muted-foreground">
+            <Upload className="mb-2 h-5 w-5" />
+            <span>Upload clinic logo</span>
+            <input type="file" accept="image/*" className="hidden" onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)} />
+          </label>
         </div>
+        <Field label="Clinic Name" value={form.clinicName} onChange={(value) => setForm((current) => ({ ...current, clinicName: value }))} />
+        <Field label="Phone Number" value={form.phoneNumber} onChange={(value) => setForm((current) => ({ ...current, phoneNumber: value }))} />
+        <Field label="Email Address" value={form.emailAddress} onChange={(value) => setForm((current) => ({ ...current, emailAddress: value }))} />
+        <Field label="Website" value={form.website} onChange={(value) => setForm((current) => ({ ...current, website: value }))} />
+        <div className="md:col-span-2"><Field label="Street Address" value={form.address} onChange={(value) => setForm((current) => ({ ...current, address: value }))} /></div>
       </div>
-      <div>
-        <div className="mb-3 text-sm font-semibold">Contact &amp; Location</div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Phone Number" defaultValue="+1 (555) 800-1000" />
-          <Field label="Email Address" defaultValue="contact@carepoint.clinic" />
-          <Field label="Website" defaultValue="www.carepoint.clinic" />
-          <Field label="Fax Number" defaultValue="+1 (555) 800-1001" />
-          <div className="sm:col-span-2"><Field label="Street Address" defaultValue="500 Medical Plaza Drive, Suite 200, Springfield, IL 62701" /></div>
-        </div>
-      </div>
+      {message ? <p className="text-sm text-primary">{message}</p> : null}
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline">Cancel</Button>
-        <Button>Save Changes</Button>
+        <Button variant="outline" type="button" onClick={() => setForm({ clinicName: "", phoneNumber: "", emailAddress: "", website: "", address: "" })}>Reset</Button>
+        <Button type="button" onClick={handleSave} disabled={saving || loading}>{saving ? "Saving..." : "Save Changes"}</Button>
       </div>
     </div>
   );
@@ -123,11 +160,11 @@ function UserManagement() {
   );
 }
 
-function Field({ label, defaultValue }: { label: string; defaultValue?: string }) {
+function Field({ label, value, defaultValue, onChange }: { label: string; value?: string; defaultValue?: string; onChange?: (value: string) => void }) {
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input className="mt-1" defaultValue={defaultValue} />
+      <Input className="mt-1" value={value ?? defaultValue ?? ""} onChange={(event) => onChange?.(event.target.value)} />
     </div>
   );
 }

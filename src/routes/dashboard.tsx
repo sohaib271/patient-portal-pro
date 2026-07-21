@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell, StatusBadge, Avatar } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,9 @@ import {
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { useAppointments, useDoctorAppointments } from "@/hooks/useAppointments";
-import { useDoctorProfile } from "@/hooks/useDoctors";
+import { useDoctorProfile, useDoctors } from "@/hooks/useDoctors";
+import { Appointment } from "@/services/appointment.service";
+import { Patient } from "@/services/patient.service";
 import { useMemo, useState } from "react";
 import type { AppointmentRecord } from "@/services/appointment.service";
 
@@ -42,6 +45,17 @@ function AdminDashboard() {
     date: today,
     status: ["pending", "booked", "completed"],
   });
+  const { data: doctors = [] } = useDoctors();
+  const { data: patientsResponse } = useQuery({
+    queryKey: ["dashboard-patients-summary"],
+    queryFn: () => Patient.getAllPatients(1, 100),
+    enabled: Boolean(user && user.role !== "doctor"),
+  });
+  const { data: followUpsResponse } = useQuery({
+    queryKey: ["dashboard-follow-ups-summary"],
+    queryFn: () => Appointment.getFollowUps(undefined, 1, 100),
+    enabled: Boolean(user && user.role !== "doctor"),
+  });
   const normalizedAppointmentQuery = appointmentQuery.trim().toLowerCase();
   const filteredTodayAppointments = useMemo(() => {
     return todayAppointments.filter((appointment) => {
@@ -58,6 +72,12 @@ function AdminDashboard() {
   const doctorStats = useMemo(() => buildDoctorStats(todayAppointments), [todayAppointments]);
   const completedToday = todayAppointments.filter((appointment) => appointment.status === "completed").length;
   const remainingToday = todayAppointments.filter((appointment) => !["completed", "cancelled"].includes(appointment.status ?? "")).length;
+  const totalPatients = patientsResponse?.count ?? 0;
+  const availableDoctors = doctors.filter((doctor) => doctor.isAvailable !== false).length;
+  const unavailableDoctors = Math.max(doctors.length - availableDoctors, 0);
+  const followUps = followUpsResponse?.followUps ?? [];
+  const completedFollowUps = followUps.filter((followUp) => followUp.status === "completed").length;
+  const followUpPercent = followUps.length ? Math.round((completedFollowUps / followUps.length) * 100) : 0;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
@@ -133,9 +153,9 @@ function AdminDashboard() {
 
         <div className="space-y-4">
           <StatCard icon={CalendarCheck} title="Today's Appointments" value={todayAppointments.length} a={{ label: "Completed", value: completedToday }} b={{ label: "Remaining", value: remainingToday }} />
-          <StatCard icon={Users} title="Patients" value={1740} a={{ label: "Registered this Month", value: 140 }} b={{ label: "Older than 1 month", value: 1600 }} />
-          <StatCard icon={Stethoscope} title="Doctors" value={15} a={{ label: "Available Today", value: 14 }} b={{ label: "Unavailable", value: "01" }} />
-          <StatCard icon={TrendingUp} title="Follow-up Checkups" value="82%" a={{ label: "Expected", value: 100 }} b={{ label: "Confirmed", value: 82 }} />
+          <StatCard icon={Users} title="Patients" value={totalPatients} a={{ label: "Registered", value: totalPatients }} b={{ label: "Today", value: todayAppointments.length }} />
+          <StatCard icon={Stethoscope} title="Doctors" value={doctors.length} a={{ label: "Available", value: availableDoctors }} b={{ label: "Unavailable", value: unavailableDoctors }} />
+          <StatCard icon={TrendingUp} title="Follow-up Checkups" value={`${followUpPercent}%`} a={{ label: "Planned", value: followUps.length }} b={{ label: "Completed", value: completedFollowUps }} />
         </div>
       </div>
     </AppShell>

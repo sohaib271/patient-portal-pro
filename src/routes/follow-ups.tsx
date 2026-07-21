@@ -1,13 +1,14 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { CalendarPlus, Search, SlidersHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarPlus, Search, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell, Avatar, StatusBadge } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/hooks/useUser";
-import { useFollowUps, useMyFollowUps } from "@/hooks/useAppointments";
 import type { FollowUpRecord } from "@/services/appointment.service";
+import { Appointment } from "@/services/appointment.service";
+import { useQuery } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/follow-ups")({
   head: () => ({ meta: [{ title: "Follow-ups - MediFlow" }] }),
@@ -38,15 +39,30 @@ function FollowUpsPage() {
   const { user, isLoading: isLoadingUser } = useUser();
   const isDoctor = user?.role === "doctor";
   const [query, setQuery] = useState("");
-  const adminFollowUps = useFollowUps(undefined, Boolean(user && !isDoctor));
-  const doctorFollowUps = useMyFollowUps(undefined, Boolean(user && isDoctor));
-  const activeQuery = isDoctor ? doctorFollowUps : adminFollowUps;
-  const { data: followUps = [], isLoading, isError, refetch } = activeQuery;
+  const [page, setPage] = useState(1);
+  const adminFollowUpsQuery = useQuery({
+    queryKey: ["admin-follow-ups-page", page],
+    queryFn: () => Appointment.getFollowUps(undefined, page, 6),
+    enabled: Boolean(user && !isDoctor),
+  });
+  const doctorFollowUpsQuery = useQuery({
+    queryKey: ["doctor-follow-ups-page", page],
+    queryFn: () => Appointment.getMyFollowUps(undefined, page, 6),
+    enabled: Boolean(user && isDoctor),
+  });
+  const activeQuery = isDoctor ? doctorFollowUpsQuery : adminFollowUpsQuery;
+  const { data: followUpsResponse, isLoading, isError, refetch } = activeQuery;
+  const followUps = followUpsResponse?.followUps ?? [];
+  const totalPages = Math.max(1, followUpsResponse?.totalPages ?? 1);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleFollowUps = useMemo(() => {
     if (!isDoctor) return followUps;
     return followUps.filter(isScheduledDoctorFollowUp);
   }, [followUps, isDoctor]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
 
   const filtered = useMemo(() => {
     return visibleFollowUps.filter((followUp) => {
@@ -130,6 +146,18 @@ function FollowUpsPage() {
           </table>
         </div>
       </Card>
+
+      {totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+            <ChevronLeft className="mr-1 h-4 w-4" /> Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+            Next <ChevronRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
     </AppShell>
   );
 }
