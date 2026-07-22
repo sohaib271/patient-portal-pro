@@ -79,8 +79,8 @@ function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email address</Label>
-              <Input id="email" type="email" placeholder="you@clinic.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
+              <Label htmlFor="email">Email address/Phone no</Label>
+              <Input id="text" type="text" placeholder="you@clinic.com/0344444444" value={email} onChange={(event) => setEmail(event.target.value)} required />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pwd">Password</Label>

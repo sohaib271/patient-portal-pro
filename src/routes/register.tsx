@@ -165,8 +165,8 @@ function RegisterPage() {
 
       {step === "contact" ? (
         <form onSubmit={handleContactSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-3 duration-300">
-          <FieldWithIcon icon={Phone} label="Phone number" type="tel" placeholder="+1 (555) 123-4567" value={contact.phone} onChange={(v) => setContact({ ...contact, phone: v })} required />
-          <FieldWithIcon icon={MessageCircle} label="WhatsApp number" type="tel" placeholder="+1 (555) 123-4567" value={contact.whatsapp} onChange={(v) => setContact({ ...contact, whatsapp: v })} required />
+          <FieldWithIcon icon={Phone} label="Phone number" type="tel" placeholder="031234567678" value={contact.phone} onChange={(v) => setContact({ ...contact, phone: v })} required />
+          <FieldWithIcon icon={MessageCircle} label="WhatsApp number" type="tel" placeholder="031234567678" value={contact.whatsapp} onChange={(v) => setContact({ ...contact, whatsapp: v })} required />
           <FieldWithIcon icon={Mail} label="Email address" type="email" placeholder="you@example.com" value={contact.email} onChange={(v) => setContact({ ...contact, email: v })} required />
           <Button type="submit" className="w-full h-11" disabled={isSubmitting}>{isSubmitting ? "Checking..." : "Continue"} <ArrowRight className="h-4 w-4" /></Button>
           <p className="text-center text-sm text-muted-foreground">
