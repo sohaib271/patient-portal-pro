@@ -48,6 +48,13 @@ export type AppointmentPatientRegistration = {
     relation?: string;
 };
 
+export type CreatePatientByPhoneResponse = {
+    success: boolean;
+    message: string;
+    contact: PatientContact;
+    patient: PatientRecord;
+};
+
 export class Patient{
     static async getAllPatients(page?: number, limit = 6){
         const res=await api.get("/patient/get-all", { params: { page, limit } });
@@ -61,7 +68,7 @@ export class Patient{
 
     static async createPatientByPhone(data:AppointmentPatientRegistration){
         const res=await api.post("/patient/create-patient-by-phone",data);
-        return res.data;
+        return res.data as CreatePatientByPhoneResponse;
     }
 
     static async addOrSearchContact(data:PatientContact){
