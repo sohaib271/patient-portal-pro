@@ -1,6 +1,6 @@
 // hooks/useUser.js
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/services/api';
+import { api, clearCsrfToken } from '@/services/api';
 
 const fetchMe = async () => {
   const { data } = await api.get('/auth/me');
@@ -21,10 +21,11 @@ export function useUser() {
   const logout = async () => {
     try {
       // Do not let an unavailable API trap the user in the authenticated UI.
-      await api.get('/auth/logout', { timeout: 5000 });
+      await api.post('/auth/logout', undefined, { timeout: 5000 });
     } catch (error) {
       console.warn('Server logout failed; clearing the local session.', error);
     } finally {
+      clearCsrfToken();
       queryClient.setQueryData(['user'], null);
       queryClient.removeQueries({
         predicate: (query) => query.queryKey[0] !== 'user',
