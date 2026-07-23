@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AuthService } from "@/services/authService";
+import { useUser } from "@/hooks/useUser";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Sign in — MediFlow" }] }),
@@ -16,11 +17,21 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user, isLoading: isLoadingUser } = useUser();
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+
+    navigate({
+      to: user.role === "patient" ? "/patient/dashboard" : "/dashboard",
+      replace: true,
+    });
+  }, [navigate, user]);
 
   const getErrorMessage = (err: unknown) => {
     if (typeof err === "object" && err && "response" in err) {
@@ -46,6 +57,16 @@ function LoginPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoadingUser || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-white to-sky-100">
+        <p className="text-sm text-muted-foreground">
+          {user ? "Redirecting to your dashboard..." : "Checking your session..."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-sky-50 via-white to-sky-100 px-4">
